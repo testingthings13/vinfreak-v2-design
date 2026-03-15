@@ -1,0 +1,403 @@
+{% extends "_base.html" %}
+{% block content %}
+<section class="page-header">
+  <div>
+    <h1>NeuroWraith import</h1>
+    <p class="muted">Point the crawler at a source and hydrate VINFREAK with fresh listings.</p>
+  </div>
+</section>
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Select source</h2>
+        <p class="muted small">Choose the spider, optionally filter, then launch the fetch.</p>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      <div class="tab-bar">
+        {% for source in neurowraith_sources %}
+        <button type="button" class="tab" data-tab="{{ source.spider }}" data-dealer="{{ source.dealership }}">{{ source.label }}</button>
+        {% endfor %}
+      </div>
+      <form id="nw-form" class="form elevated" action="/admin/neurowraith" method="post" novalidate>
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="spider" id="spider" value="">
+        <input type="hidden" name="dealership" id="dealership" value="">
+        <div class="form-grid two">
+          <label><span>Search</span><input type="text" name="q" id="nw-search" placeholder="Leave blank to fetch everything"></label>
+          <label>
+            <span>Limit</span>
+            <input
+              type="number"
+              name="limit"
+              value="10"
+              min="1"
+              {% if neurowraith_manual_max_limit %}max="{{ neurowraith_manual_max_limit }}"{% endif %}
+            >
+          </label>
+        </div>
+        <div class="form-actions">
+          <button type="submit" id="fetch-btn" class="button primary">Fetch</button>
+          <a class="button" href="/admin/jobs">View Jobs</a>
+        </div>
+        <p id="nw-job-status" class="muted small" aria-live="polite"></p>
+      </form>
+    </div>
+  </article>
+</section>
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Daily auto import</h2>
+        <p class="muted small">Schedule NeuroWraith to pull fresh listings automatically each day.</p>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      <form class="form elevated" action="/admin/neurowraith/schedule" method="post" novalidate>
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="tab" value="{{ active_tab }}">
+        <label class="nw-schedule-toggle">
+          <input type="checkbox" name="enabled" value="1" {% if schedule.enabled %}checked{% endif %}>
+          <span>Enable daily auto import</span>
+        </label>
+        <div class="form-grid two">
+          <label>
+            <span>Run time</span>
+            <input type="time" name="time" value="{{ schedule.time }}">
+          </label>
+          <label>
+            <span>Timezone</span>
+            <select name="timezone">
+              {% for tz in neurowraith_timezones %}
+              <option value="{{ tz }}" {% if tz == schedule.timezone %}selected{% endif %}>{{ tz.replace('_', ' ') }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <fieldset class="nw-schedule-fieldset">
+          <legend>Dealerships</legend>
+          <p class="muted small">Choose which sources run and how many listings to import each day.</p>
+          {% for source in neurowraith_sources %}
+          {% set conf = schedule.spiders[source.spider] %}
+          <div class="form-grid two nw-schedule-row">
+            <label class="nw-schedule-checkbox">
+              <input type="checkbox" name="{{ source.spider }}_enabled" value="1" {% if conf.enabled %}checked{% endif %}>
+              <span>{{ source.label }}</span>
+            </label>
+            <label>
+              <span>Limit</span>
+              <input
+                type="number"
+                name="{{ source.spider }}_limit"
+                value="{{ conf.limit }}"
+                min="1"
+                {% if neurowraith_manual_max_limit %}max="{{ neurowraith_manual_max_limit }}"{% endif %}
+              >
+            </label>
+          </div>
+          {% endfor %}
+        </fieldset>
+        {% if schedule_last_run %}
+        <p class="muted small">Last auto import ran {{ schedule_last_run }}.</p>
+        {% elif schedule.enabled and schedule_enabled_count %}
+        <p class="muted small">Auto import is enabled and will run at the scheduled time.</p>
+        {% elif schedule.enabled and not schedule_enabled_count %}
+        <p class="muted small">Enable at least one dealership to activate the schedule.</p>
+        {% endif %}
+        {% if schedule_run_once %}
+        <p class="muted small">Next one-time import will run {{ schedule_run_once }}.</p>
+        {% endif %}
+        {% if not neurowraith_scheduler_enabled %}
+        <p class="muted small">
+          In-app scheduler is disabled. Use an external cron to call <code>{{ neurowraith_cron_path }}</code>.
+          {% if neurowraith_cron_enabled %}
+          Send token in header <code>{{ neurowraith_cron_header }}</code>.
+          {% else %}
+          Set <code>NEUROWRATH_CRON_TOKEN</code> to enable secure cron execution.
+          {% endif %}
+        </p>
+        {% endif %}
+        <div class="form-actions">
+          <button type="submit" name="action" value="save" class="button primary">Save schedule</button>
+          <button type="submit" name="action" value="run_now" class="button">Run now</button>
+          <button
+            type="submit"
+            name="action"
+            value="test"
+            class="button"
+            {% if not neurowraith_scheduler_enabled %}disabled title="Enable in-app scheduler to queue 1-minute tests"{% endif %}
+          >
+            Run test in 1 minute
+          </button>
+        </div>
+      </form>
+    </div>
+  </article>
+</section>
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Daily scraper progress</h2>
+        <p class="muted small">Status for {{ neurowraith_progress_date }} based on the latest scheduled runs.</p>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      {% if neurowraith_progress %}
+      <div class="table-card">
+        <div class="table-card__body">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Dealership</th>
+                <th>Date</th>
+                <th>Last scraped</th>
+                <th>Cars added today</th>
+                <th>Cars removed today</th>
+                <th>% of active listings scraped</th>
+                <th>Active listings</th>
+                <th>Error messages</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in neurowraith_progress %}
+              <tr{% if not row.enabled %} class="muted"{% endif %}>
+                <td>{{ row.dealership }}</td>
+                <td>{{ row.date }}</td>
+                <td>{{ row.last_scraped }}</td>
+                <td>{{ row.cars_added }}</td>
+                <td>{{ row.cars_removed }}</td>
+                <td>{{ row.percent_scraped }}</td>
+                <td>{{ row.active_total }}</td>
+                <td>{{ row.errors }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% else %}
+      <p class="muted small">No scheduled NeuroWraith runs have been recorded yet today.</p>
+      {% endif %}
+    </div>
+  </article>
+</section>
+<script>
+  (function () {
+    const tabs = document.querySelectorAll('.tab-bar .tab');
+    const spiderInput = document.getElementById('spider');
+    const dealerInput = document.getElementById('dealership');
+    const form = document.getElementById('nw-form');
+    const fetchBtn = document.getElementById('fetch-btn');
+    const statusNode = document.getElementById('nw-job-status');
+    const searchInput = form ? form.querySelector('input[name="q"]') : null;
+    const jobsEndpoint = "{{ neurowraith_jobs_endpoint }}";
+    const activeJobId = "{{ neurowraith_active_job_id or '' }}";
+    let activeTabButton = null;
+    let pollTimer = null;
+    let currentPollJobId = '';
+    let pollStartedAtMs = 0;
+
+    function setStatus(message) {
+      if (!statusNode) return;
+      statusNode.textContent = message || '';
+    }
+
+    function updateButtonLabel() {
+      if (!fetchBtn) return;
+      const sourceLabel = activeTabButton ? activeTabButton.textContent : 'source';
+      const query = searchInput ? searchInput.value.trim() : '';
+      fetchBtn.textContent = query
+        ? `Fetch "${query}" from ${sourceLabel}`
+        : `Fetch all from ${sourceLabel}`;
+    }
+
+    function setBusy(isBusy) {
+      if (!fetchBtn) return;
+      fetchBtn.disabled = !!isBusy;
+      if (isBusy) {
+        fetchBtn.textContent = 'Fetching...';
+      } else {
+        updateButtonLabel();
+      }
+    }
+
+    function clearPollTimer() {
+      if (pollTimer) {
+        window.clearTimeout(pollTimer);
+        pollTimer = null;
+      }
+    }
+
+    function nextPollDelayMs() {
+      if (!pollStartedAtMs) return 2200;
+      const elapsedMs = Math.max(0, Date.now() - pollStartedAtMs);
+      if (elapsedMs >= 8 * 60 * 1000) return 12000;
+      if (elapsedMs >= 3 * 60 * 1000) return 8000;
+      if (elapsedMs >= 60 * 1000) return 5000;
+      return 2200;
+    }
+
+    function selectTab(btn) {
+      const tab = btn.dataset.tab;
+      const dealer = btn.dataset.dealer;
+      tabs.forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeTabButton = btn;
+      spiderInput.value = tab;
+      dealerInput.value = dealer;
+      updateButtonLabel();
+      history.replaceState(null, '', '?tab=' + tab);
+    }
+
+    function pollJob(jobId) {
+      if (!jobId || !jobsEndpoint || typeof fetch !== 'function') return;
+      if (currentPollJobId && currentPollJobId !== jobId) return;
+      fetch(jobsEndpoint + '/' + encodeURIComponent(jobId), {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json', 'X-Requested-With': 'fetch' },
+      })
+        .then((response) => {
+          const contentType = (response.headers.get('content-type') || '').toLowerCase();
+          if (contentType.includes('application/json')) {
+            return response
+              .json()
+              .catch(() => ({}))
+              .then((payload) => ({ ok: response.ok, status: response.status, payload }));
+          }
+          return response
+            .text()
+            .catch(() => '')
+            .then((text) => ({ ok: response.ok, status: response.status, payload: { detail: (text || '').trim() } }));
+        })
+        .then((result) => {
+          if (!result.ok) {
+            const detailRaw =
+              (result.payload && (result.payload.detail || result.payload.message)) || '';
+            const detail = String(detailRaw || '').replace(/\s+/g, ' ').trim();
+            const errMsg = detail
+              ? `Unable to read job status (${result.status}): ${detail.slice(0, 240)}`
+              : `Unable to read job status (HTTP ${result.status}).`;
+            throw new Error(errMsg);
+          }
+          const payload = result.payload || {};
+          if (payload.message) {
+            setStatus(payload.message);
+          }
+          if (payload.done) {
+            clearPollTimer();
+            setBusy(false);
+            if (payload.status === 'succeeded') {
+              window.location.assign(payload.redirect_url || '/admin/neurowraith');
+            } else {
+              setStatus(payload.message || 'Background import failed.');
+            }
+            return;
+          }
+          const delayMs = nextPollDelayMs();
+          pollTimer = window.setTimeout(function () {
+            pollJob(jobId);
+          }, delayMs);
+        })
+        .catch((err) => {
+          clearPollTimer();
+          setBusy(false);
+          setStatus((err && err.message) || 'Background import failed.');
+        });
+    }
+
+    function beginPolling(jobId) {
+      if (!jobId) return;
+      currentPollJobId = jobId;
+      pollStartedAtMs = Date.now();
+      clearPollTimer();
+      pollJob(jobId);
+    }
+
+    tabs.forEach((btn) => btn.addEventListener('click', () => selectTab(btn)));
+    const initial = Array.from(tabs).find((t) => t.dataset.tab === "{{ active_tab }}") || tabs[0];
+    if (initial) {
+      selectTab(initial);
+    }
+
+    if (searchInput) {
+      searchInput.addEventListener('input', updateButtonLabel);
+    }
+
+    if (form && searchInput) {
+      form.addEventListener('submit', (event) => {
+        if (!jobsEndpoint || typeof fetch !== 'function' || typeof FormData !== 'function') {
+          if (!searchInput.value.trim()) {
+            searchInput.value = '';
+          }
+          return;
+        }
+        event.preventDefault();
+        if (!searchInput.value.trim()) {
+          // Ensure an explicit empty string is submitted instead of leftover whitespace.
+          searchInput.value = '';
+        }
+        clearPollTimer();
+        setBusy(true);
+        setStatus('Starting NeuroWraith background import...');
+        fetch(jobsEndpoint, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json', 'X-Requested-With': 'fetch' },
+          body: new FormData(form),
+        })
+          .then((response) => {
+            const contentType = (response.headers.get('content-type') || '').toLowerCase();
+            if (contentType.includes('application/json')) {
+              return response
+                .json()
+                .catch(() => ({}))
+                .then((payload) => ({ ok: response.ok, status: response.status, payload }));
+            }
+            return response
+              .text()
+              .catch(() => '')
+              .then((text) => ({ ok: response.ok, status: response.status, payload: { detail: (text || '').trim() } }));
+          })
+          .then((result) => {
+            const payload = result.payload || {};
+            if (!result.ok) {
+              if (payload.job_id) {
+                setStatus((payload.message || 'Background import already running.') + ' Track it in Jobs tab.');
+                setBusy(false);
+                return;
+              }
+              const detailRaw = payload.message || payload.detail || '';
+              const detail = String(detailRaw || '').replace(/\s+/g, ' ').trim();
+              const errMsg = detail
+                ? `Unable to start background import (${result.status}): ${detail.slice(0, 240)}`
+                : `Unable to start background import (HTTP ${result.status}).`;
+              throw new Error(errMsg);
+            }
+            const jobId = payload.job_id;
+            if (!jobId) {
+              throw new Error('Background import did not return a job id.');
+            }
+            setStatus((payload.message || 'Background import started.') + ' Track it in Jobs tab.');
+            setBusy(false);
+          })
+          .catch((err) => {
+            clearPollTimer();
+            setBusy(false);
+            setStatus((err && err.message) || 'Unable to start background import.');
+          });
+      });
+    }
+
+    if (activeJobId) {
+      setStatus('A previous NeuroWraith job is still running. Track progress in Jobs tab.');
+    }
+    updateButtonLabel();
+  })();
+</script>
+{% endblock %}

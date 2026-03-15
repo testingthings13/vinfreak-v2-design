@@ -1,0 +1,7 @@
+{
+  "routes": [
+    { "src": "/share", "dest": "https://api.vinfreak.com/share", "status": 200 },
+    { "src": "/share/*", "dest": "https://api.vinfreak.com/share/*", "status": 200 },
+    { "src": "/.*", "dest": "/index.html", "status": 200 }
+  ]
+}

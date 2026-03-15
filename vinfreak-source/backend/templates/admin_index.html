@@ -1,0 +1,376 @@
+{% extends "_base.html" %}
+{% block content %}
+{% set perms = request.session.get('permissions') or [] %}
+{% set is_super = request.session.get('is_superadmin') %}
+{% set window_label = 'Last ' ~ dashboard.window_hours ~ ' hours' %}
+{% set can_run_scraper_checks = is_super or 'neurowraith' in perms %}
+
+<section class="page-header">
+  <div>
+    <h1>FreakOps</h1>
+    <p class="muted">Live visibility into inventory volume, source mix, and scraper health.</p>
+    <p class="muted small">Updated {{ dashboard.generated_at }} · {{ window_label }}</p>
+  </div>
+</section>
+
+{% if active_jobs %}
+<section class="admin-section" id="active-jobs">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Running Jobs</h2>
+        <p class="muted small">Background jobs currently in progress. Stop marks jobs as terminal immediately.</p>
+      </div>
+      <div class="actions">
+        <a class="button small" href="/admin/jobs">Open Jobs Tab</a>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      <div class="table-card">
+        <div class="table-card__body">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>System</th>
+                <th>Status</th>
+                <th>Target</th>
+                <th>Elapsed</th>
+                <th>Message</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for job in active_jobs %}
+              {% set can_stop_job = is_super or job.section in perms %}
+              <tr>
+                <td>{{ job.system }}</td>
+                <td>
+                  {% if job.stop_forced %}
+                  <span class="badge warning">Stopped</span>
+                  {% elif job.stop_requested %}
+                  <span class="badge warning">Stopping</span>
+                  {% elif job.status == 'pending' %}
+                  {% set pending_message = (job.message or '')|lower %}
+                  {% if 'queued' in pending_message %}
+                  <span class="badge info">Queued</span>
+                  {% elif 'start' in pending_message %}
+                  <span class="badge info">Starting</span>
+                  {% else %}
+                  <span class="badge info">Pending</span>
+                  {% endif %}
+                  {% else %}
+                  <span class="badge info">{{ job.status|title }}</span>
+                  {% endif %}
+                </td>
+                <td>{{ job.subject }}</td>
+                <td>{{ job.elapsed }}</td>
+                <td>{{ job.message }}</td>
+                <td>
+                  {% if can_stop_job and job.stop_url and not job.stop_requested %}
+                  <form method="post" action="{{ job.stop_url }}">
+                    <input type="hidden" name="csrf" value="{{ csrf_token(request) }}" />
+                    <button class="button small danger" type="submit">Stop Job</button>
+                  </form>
+                  {% elif job.stop_requested %}
+                  <span class="muted small">Stop requested</span>
+                  {% else %}
+                  <span class="muted small">No access</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </article>
+</section>
+{% endif %}
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Inventory pulse</h2>
+        <p class="muted small">Core listing metrics for fast daily checks.</p>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      <div class="stat-grid">
+        {% for card in dashboard.kpi_cards %}
+        <div class="stat-card">
+          <div class="stat-card__label">{{ card.label }}</div>
+          <div class="stat-card__value">{{ card.value }}</div>
+          <div class="stat-card__hint muted small">{{ card.hint }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </article>
+</section>
+
+{% if dashboard.alerts %}
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Attention</h2>
+        <p class="muted small">Items worth checking now.</p>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      <ul class="cards">
+        {% for alert in dashboard.alerts %}
+        <li class="card">{{ alert.message }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </article>
+</section>
+{% endif %}
+
+<section class="admin-section" id="scraper-health">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Scraper health</h2>
+        <p class="muted small">Run volume and success rates by source ({{ window_label|lower }}).</p>
+      </div>
+      {% if can_run_scraper_checks %}
+      <form method="post" action="/admin/scraper-health/check-all" class="scraper-health-toolbar">
+        <input type="hidden" name="csrf" value="{{ csrf_token(request) }}" />
+        <button class="button small primary" type="submit">Run All Checks</button>
+      </form>
+      {% endif %}
+    </header>
+    <div class="card-panel__body">
+      {% if dashboard.scraper_rows %}
+      <div class="table-card">
+        <div class="table-card__body">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Source</th>
+                <th>Enabled</th>
+                <th>Runs</th>
+                <th>Success</th>
+                <th>Health</th>
+                <th>Health check</th>
+                <th>Inserted</th>
+                <th>Updated</th>
+                <th>Last run</th>
+                <th>Last error</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in dashboard.scraper_rows %}
+              <tr>
+                <td>{{ row.source_label }}</td>
+                <td>
+                  {% if row.enabled %}
+                  <span class="badge success">Enabled</span>
+                  {% else %}
+                  <span class="badge info">Disabled</span>
+                  {% endif %}
+                </td>
+                <td>{{ row.run_count }}</td>
+                <td>
+                  {% if row.success_pct is none %}
+                  <span class="muted">-</span>
+                  {% else %}
+                  {{ row.success_pct }}% ({{ row.success_count }}/{{ row.run_count }})
+                  {% endif %}
+                </td>
+                <td><span class="badge {{ row.health_badge }}">{{ row.health_label }}</span></td>
+                <td>
+                  <div class="scraper-health-check">
+                    <span class="badge {{ row.health_check_badge }}">{{ row.health_check_label }}</span>
+                    <span class="muted small">{{ row.health_check_last_run }}</span>
+                    {% if row.health_check_label == 'Pass' %}
+                    <span class="muted small">{{ row.health_check_items }} item(s)</span>
+                    {% elif row.health_check_error != 'None' %}
+                    <span class="muted small">{{ row.health_check_error }}</span>
+                    {% endif %}
+                  </div>
+                </td>
+                <td>{{ row.inserted_count }}</td>
+                <td>{{ row.updated_count }}</td>
+                <td>{{ row.last_run }}</td>
+                <td>{{ row.last_error }}</td>
+                <td>
+                  {% if can_run_scraper_checks %}
+                  <div class="scraper-health-actions">
+                    <form method="post" action="/admin/scraper-health/check">
+                      <input type="hidden" name="csrf" value="{{ csrf_token(request) }}" />
+                      <input type="hidden" name="spider" value="{{ row.spider }}" />
+                      <button class="button small" type="submit">Run Check</button>
+                    </form>
+                  </div>
+                  {% else %}
+                  <span class="muted small">-</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% else %}
+      <p class="muted small">No scraper runs found yet.</p>
+      {% endif %}
+    </div>
+  </article>
+</section>
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Listings by source</h2>
+        <p class="muted small">Active listing share per source.</p>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      {% if dashboard.source_rows %}
+      <div class="table-card">
+        <div class="table-card__body">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Source</th>
+                <th>Active listings</th>
+                <th>Share</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in dashboard.source_rows %}
+              <tr>
+                <td>{{ row.source_label }}</td>
+                <td>{{ row.count }}</td>
+                <td>{{ '%.1f'|format(row.share) }}%</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% else %}
+      <p class="muted small">No active listings found.</p>
+      {% endif %}
+    </div>
+  </article>
+</section>
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Listings by status</h2>
+        <p class="muted small">Status distribution across non-deleted listings.</p>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      {% if dashboard.status_rows %}
+      <div class="table-card">
+        <div class="table-card__body">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Listings</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in dashboard.status_rows %}
+              <tr>
+                <td><span class="badge {{ row.badge_class }}">{{ row.status_label }}</span></td>
+                <td>{{ row.count }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% else %}
+      <p class="muted small">No listings found.</p>
+      {% endif %}
+    </div>
+  </article>
+</section>
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Recent imports</h2>
+        <p class="muted small">Latest import jobs and linked listing counts.</p>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      {% if dashboard.recent_imports %}
+      <div class="table-card">
+        <div class="table-card__body">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Import</th>
+                <th>Cars</th>
+                <th>Uploaded</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in dashboard.recent_imports %}
+              <tr>
+                <td>{{ row.name }}</td>
+                <td>{{ row.car_count }}</td>
+                <td>{{ row.uploaded_at }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% else %}
+      <p class="muted small">No imports found.</p>
+      {% endif %}
+    </div>
+  </article>
+</section>
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Quick navigation</h2>
+        <p class="muted small">Jump straight into the areas you manage the most.</p>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      <ul class="cards">
+        {% if is_super or 'cars' in perms %}
+        <li><a class="card" href="/admin/cars">Manage Cars</a></li>
+        <li><a class="card" href="/admin/cars/new">Add a Car</a></li>
+        {% endif %}
+        {% if is_super or 'manual' in perms %}
+        <li><a class="card" href="/admin/cars/manual">Manual Listing Entry</a></li>
+        {% endif %}
+        {% if is_super or 'car_logos' in perms %}<li><a class="card" href="/admin/car-logos">Car Logos</a></li>{% endif %}
+        {% if is_super or 'settings' in perms %}<li><a class="card" href="/admin/settings">Site Settings</a></li>{% endif %}
+        {% if is_super or 'imports' in perms %}<li><a class="card" href="/admin/imports">Car Imports</a></li>{% endif %}
+        {% if is_super or 'imports' in perms %}<li><a class="card" href="/admin/facebook-marketplace">Facebook Marketplace</a></li>{% endif %}
+        {% if is_super or 'imports' in perms %}<li><a class="card" href="/admin/pca-mart">PCA Mart</a></li>{% endif %}
+        {% if is_super or 'freakstats' in perms %}<li><a class="card" href="/admin/freakstats">FreakGPT</a></li>{% endif %}
+        {% if is_super or 'freakestimate' in perms %}<li><a class="card" href="/admin/freakestimate">What's my car worth?</a></li>{% endif %}
+        {% if is_super or 'neuroai' in perms %}<li><a class="card" href="/admin/neuroai">NeuroAI Batch</a></li>{% endif %}
+        {% if is_super or 'neurowraith' in perms %}<li><a class="card" href="/admin/neurowraith">NeuroWraith</a></li>{% endif %}
+        {% if is_super %}
+        <li><a class="card" href="/admin/agents">Manage Agents</a></li>
+        {% endif %}
+      </ul>
+    </div>
+  </article>
+</section>
+{% endblock %}

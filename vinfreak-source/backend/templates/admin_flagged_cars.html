@@ -1,0 +1,203 @@
+{% extends "_base.html" %}
+{% block content %}
+{% set page_class = 'page--wide' %}
+{% set perms = request.session.get('permissions') or [] %}
+{% set is_super = request.session.get('is_superadmin') %}
+{% set csrf_value = csrf_token(request) %}
+{% set return_to = request.url.path ~ ('?' ~ request.url.query if request.url.query else '') %}
+
+<section class="page-header">
+  <div>
+    <h1>Flagged Cars</h1>
+    <p class="muted">Vehicles that are live or mid-auction but missing critical listing details.</p>
+  </div>
+  <span class="tag danger">{{ flagged_total }} issue{{ 's' if flagged_total != 1 else '' }}</span>
+</section>
+
+<section class="admin-section admin-section--wide">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Needs attention</h2>
+        <p class="muted small">Fill in the missing information below so these listings stay sale-ready.</p>
+        {% if include_all_statuses %}
+        <p class="muted small">Reviewing every car regardless of auction status.</p>
+        {% else %}
+        <p class="muted small">Monitoring statuses: {{ flagged_statuses|join(', ') }}</p>
+        {% endif %}
+        {% if deep_picture_scan %}
+        <p class="muted small">Deep picture scan is ON. Page load can be slower because remote images are verified.</p>
+        {% else %}
+        <p class="muted small">Using fast mode (cached picture checks only). Run deep scan if you need full picture validation.</p>
+        {% endif %}
+      </div>
+      <div class="form-actions">
+        {% if include_all_statuses %}
+        <a class="button ghost" href="{{ flagged_return_url }}">Back to flagged statuses</a>
+        {% else %}
+        <a
+          class="button"
+          href="/admin/cars/flagged?scope=all"
+          data-check-all-cars
+          data-return-url="{{ flagged_return_url }}"
+        >Check all cars</a>
+        {% endif %}
+        {% if deep_picture_scan %}
+        <a class="button ghost" href="{{ fast_scan_url }}">Use fast mode</a>
+        {% else %}
+        <a class="button ghost" href="{{ deep_scan_url }}">Run deep picture scan</a>
+        {% endif %}
+      </div>
+    </header>
+    <div class="card-panel__body">
+      {% if not flagged_cars %}
+      <div class="empty-state">
+        <h3>All clear!</h3>
+        <p class="muted">Every live car has the essentials covered. Keep up the great work.</p>
+        <a href="/admin/cars" class="button">Back to inventory</a>
+      </div>
+      {% else %}
+      <div class="table-card">
+        <div class="table-card__body">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Thumb</th>
+                <th>Vehicle</th>
+                <th>Dealership</th>
+                <th>Status</th>
+                <th>Mileage</th>
+                <th>Price</th>
+                <th>Location</th>
+                <th>Missing details</th>
+                <th>Updated</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for entry in flagged_cars %}
+              {% set car = entry.car %}
+              <tr>
+                <td class="flagged-table__thumb">
+                  {% if car.image_url %}
+                  {% set thumb_url = car.image_url if car.image_url.startswith('http') or car.image_url.startswith('/') else '/' ~ car.image_url.lstrip('/') %}
+                  <img src="{{ thumb_url }}" alt="" loading="lazy">
+                  {% else %}
+                  <div class="thumb-placeholder">No photo</div>
+                  {% endif %}
+                </td>
+                <td>
+                  <div class="flagged-vehicle">
+                    {% if car.url %}<a href="{{ car.url }}" target="_blank" rel="noopener">{% endif %}
+                    {{ car.title or (car.year ~ ' ' ~ (car.make or '') ~ ' ' ~ (car.model or '')) or 'Untitled vehicle' }}
+                    {% if car.url %}</a>{% endif %}
+                    <div class="muted small">VIN: {{ car.vin or '—' }}</div>
+                    <div class="muted small">ID #{{ car.id }}</div>
+                  </div>
+                </td>
+                <td>{{ entry.dealership_name or '—' }}</td>
+                <td>{{ car.auction_status or '—' }}</td>
+                <td>
+                  {% if car.mileage %}
+                  {{ "{:,.0f}".format(car.mileage) }} mi
+                  {% else %}
+                  —
+                  {% endif %}
+                </td>
+                <td>
+                  {% if car.price %}
+                  {{ "{:,.0f}".format(car.price) }} {{ car.currency or '' }}
+                  {% else %}
+                  —
+                  {% endif %}
+                </td>
+                <td>{{ (car.city or '') ~ (', ' if car.city and car.state else '') ~ (car.state or '') }}</td>
+                <td>
+                  <div class="flagged-missing">
+                    {% for label in entry.missing %}
+                    <span class="badge error">{{ label }}</span>
+                    {% endfor %}
+                  </div>
+                </td>
+                <td>{{ car.updated_at or '—' }}</td>
+                <td class="actions">
+                  <div class="flagged-actions">
+                    {% if is_super or 'cars' in perms %}
+                    <a class="button small" href="/admin/cars/{{ car.id }}">Edit</a>
+                    <form method="post" action="/admin/cars/{{ car.id }}/status">
+                      <input type="hidden" name="csrf" value="{{ csrf_value }}">
+                      <input type="hidden" name="status" value="REMOVED">
+                      <input type="hidden" name="return_to" value="{{ return_to }}">
+                      <button type="submit" class="button ghost small">Removed</button>
+                    </form>
+                    <form method="post" action="/admin/cars/{{ car.id }}/status">
+                      <input type="hidden" name="csrf" value="{{ csrf_value }}">
+                      <input type="hidden" name="status" value="SOLD">
+                      <input type="hidden" name="return_to" value="{{ return_to }}">
+                      <button type="submit" class="button ghost small">Sold</button>
+                    </form>
+                    <form method="post" action="/admin/cars/{{ car.id }}/delete" onsubmit="return confirm('Permanently delete this car? This cannot be undone.')">
+                      <input type="hidden" name="csrf" value="{{ csrf_value }}">
+                      <input type="hidden" name="return_to" value="{{ return_to }}">
+                      <button
+                        type="submit"
+                        class="button danger small icon-only"
+                        title="Permanently delete"
+                        aria-label="Permanently delete"
+                      >&#128465;</button>
+                    </form>
+                    {% endif %}
+                    {% if car.url %}<a class="button ghost small" href="{{ car.url }}" target="_blank" rel="noopener">View</a>{% endif %}
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </article>
+</section>
+
+<div id="flagged-check-overlay" class="flagged-check-overlay" hidden aria-live="polite" aria-busy="true">
+  <div class="flagged-check-overlay__dialog">
+    <div class="flagged-check-overlay__spinner" role="presentation"></div>
+    <h3>Checking entire inventory…</h3>
+    <p class="muted">Hang tight while we review every listing for missing details.</p>
+  </div>
+</div>
+
+<script>
+(function(){
+  const trigger = document.querySelector('[data-check-all-cars]');
+  const overlay = document.getElementById('flagged-check-overlay');
+  if (!trigger || !overlay) return;
+
+  const defaultReturn = trigger.getAttribute('data-return-url') || '/admin/cars/flagged';
+
+  trigger.addEventListener('click', async (event) => {
+    event.preventDefault();
+    if (trigger.dataset.loading === '1') {
+      return;
+    }
+    trigger.dataset.loading = '1';
+    overlay.hidden = false;
+    trigger.classList.add('is-loading');
+
+    try {
+      await fetch(trigger.href, {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: { 'X-Requested-With': 'fetch' },
+      });
+    } catch (error) {
+      console.error('Failed to check entire inventory', error);
+    }
+
+    window.location.href = defaultReturn;
+  });
+})();
+</script>
+{% endblock %}

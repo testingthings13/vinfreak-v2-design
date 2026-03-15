@@ -1,0 +1,142 @@
+{% extends "_base.html" %}
+{% block content %}
+<section class="page-header">
+  <div>
+    <h1>{{ 'Edit car' if car else 'Create car' }}</h1>
+    <p class="muted">Tune every attribute before the listing goes live.</p>
+  </div>
+</section>
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Vehicle details</h2>
+        <p class="muted small">Complete metadata helps surface the right vehicle to the right shopper.</p>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      <form class="form elevated" method="post" action="{{ action }}" enctype="multipart/form-data">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+
+        <div class="form-grid three">
+          <label><span>VIN</span><input name="vin" value="{{ car.vin if car else '' }}"></label>
+          <label><span>Year</span><input type="number" name="year" value="{{ car.year if car else '' }}"></label>
+          <label>
+            <span>Make</span>
+            <select name="make_id">
+              <option value=""></option>
+              {% for m in makes %}
+              <option value="{{ m.id }}" {{ 'selected' if car and car.make_id==m.id else '' }}>{{ m.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            <span>Model</span>
+            <select name="model_id">
+              <option value=""></option>
+              {% for m in models %}
+              <option value="{{ m.id }}" {{ 'selected' if car and car.model_id==m.id else '' }}>{{ m.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            <span>Category</span>
+            <select name="category_id">
+              <option value=""></option>
+              {% for c in categories %}
+              <option value="{{ c.id }}" {{ 'selected' if car and car.category_id==c.id else '' }}>{{ c.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            <span>Dealership</span>
+            <select name="dealership_id">
+              <option value=""></option>
+              {% for d in dealerships %}
+              <option value="{{ d.id }}" {{ 'selected' if car and car.dealership_id==d.id else '' }}>{{ d.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label><span>Trim</span><input name="trim" value="{{ car.trim if car else '' }}"></label>
+          <label><span>Price</span><input type="number" step="0.01" name="price" value="{{ car.price if car else '' }}"></label>
+          <label><span>Mileage</span><input type="number" name="mileage" value="{{ car.mileage if car else '' }}"></label>
+          <label><span>Currency</span><input name="currency" value="{{ car.currency if car else 'USD' }}"></label>
+          <label><span>City</span><input name="city" value="{{ car.city if car else '' }}"></label>
+          <label><span>State</span><input name="state" value="{{ car.state if car else '' }}"></label>
+          <label>
+            <span>Status</span>
+            <select name="auction_status">
+              {% set st = (car.auction_status if car else '')|upper %}
+              {% for s in ['LIVE','AUCTION_IN_PROGRESS','SOLD','REMOVED'] %}
+              <option value="{{ s }}" {{ 'selected' if st==s else '' }}>{{ s }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label><span>Lot #</span><input name="lot_number" value="{{ car.lot_number if car else '' }}"></label>
+          <label><span>Source</span><input name="source" value="{{ car.source if car else '' }}"></label>
+          <label><span>Source URL</span><input name="url" value="{{ car.url if car else '' }}"></label>
+          <label><span>Title</span><input name="title" value="{{ car.title if car else '' }}"></label>
+          {% if available_images %}
+          <div class="car-image-picker">
+            <span class="car-image-picker__title">Available pictures</span>
+            <p class="muted small">Choose one to set it as the main picture, or upload a new main picture below.</p>
+            <div class="car-image-picker__grid">
+              {% for img in available_images %}
+              {% set image_src = img if img.startswith('http') or img.startswith('/') else '/' ~ img.lstrip('/') %}
+              <label class="car-image-picker__option{{ ' car-image-picker__option--current' if car and car.image_url == img else '' }}">
+                <input type="radio" name="main_image_choice" value="{{ img }}">
+                <img src="{{ image_src }}" alt="Car image {{ loop.index }}">
+                <span class="car-image-picker__caption">{{ 'Current main image' if car and car.image_url == img else 'Set as main image' }}</span>
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+          <label><span>Main image URL</span><input name="image_url" value="{{ car.image_url if car else '' }}"></label>
+          <label><span>Main image file</span><input type="file" name="image_file"></label>
+          <label><span>Additional image URLs</span><textarea name="images_json" rows="3">{{ images_text if images_text else '' }}</textarea></label>
+          <label><span>Additional image files</span><input type="file" name="image_files" multiple></label>
+          <label><span>Posted at</span><input name="posted_at" value="{{ car.posted_at if car else '' }}" placeholder="YYYY-MM-DDThh:mm:ssZ"></label>
+          <label><span>Seller name</span><input name="seller_name" value="{{ car.seller_name if car else '' }}"></label>
+          <label><span>Seller rating</span><input name="seller_rating" value="{{ car.seller_rating if car else '' }}"></label>
+          <label><span>Seller reviews</span><input name="seller_reviews" value="{{ car.seller_reviews if car else '' }}"></label>
+          <label><span>Location address</span><input name="location_address" value="{{ car.location_address if car else '' }}"></label>
+          <label><span>Location URL</span><input name="location_url" value="{{ car.location_url if car else '' }}"></label>
+          <label><span>End time</span><input name="end_time" value="{{ car.end_time if car else '' }}" placeholder="YYYY-MM-DDThh:mm:ssZ"></label>
+          <label><span>Time left</span><input name="time_left" value="{{ car.time_left if car else '' }}"></label>
+          <label><span>Views</span><input type="number" name="number_of_views" value="{{ car.number_of_views if car else '' }}"></label>
+          <label><span>Bids</span><input type="number" name="number_of_bids" value="{{ car.number_of_bids if car else '' }}"></label>
+        </div>
+
+        <label>
+          <span>Highlights</span>
+          <textarea name="highlights" rows="3">{{ car.highlights if car else '' }}</textarea>
+        </label>
+        <label>
+          <span>Description</span>
+          <textarea name="description" rows="6">{{ car.description if car else '' }}</textarea>
+        </label>
+
+        <div class="form-actions">
+          <button type="submit" class="button primary">Save changes</button>
+        </div>
+      </form>
+    </div>
+  </article>
+</section>
+<script>
+  (function () {
+    var radios = document.querySelectorAll('input[name="main_image_choice"]');
+    var mainImageInput = document.querySelector('input[name="image_url"]');
+    if (!radios.length || !mainImageInput) return;
+    radios.forEach(function (radio) {
+      radio.addEventListener('change', function () {
+        if (radio.checked) {
+          mainImageInput.value = radio.value;
+        }
+      });
+    });
+  })();
+</script>
+{% endblock %}

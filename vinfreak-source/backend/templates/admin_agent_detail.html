@@ -1,0 +1,218 @@
+{% extends "_base.html" %}
+{% block content %}
+<section class="page-header agent-hero">
+  <div class="agent-hero__intro">
+    <span class="agent-hero__eyebrow">Agent profile</span>
+    <h1>{{ agent.username }}</h1>
+    <p class="muted">Access to {{ stats.section_count }} section{{ 's' if stats.section_count != 1 else '' }} • Joined {{ agent_created or '—' }}</p>
+    <div class="agent-hero__sections">
+      {% if sections %}
+        {% for code in sections %}
+          <span class="pill subtle">{{ section_labels.get(code, code.replace('_', ' ').title()) }}</span>
+        {% endfor %}
+      {% else %}
+        <span class="muted small">No sections assigned</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="agent-hero__meta">
+    <div class="agent-hero__badges">
+      {% if agent.is_superuser %}<span class="badge">Super admin</span>{% endif %}
+      {% if agent.is_active %}
+        <span class="badge success">Active</span>
+      {% else %}
+        <span class="badge error">Suspended</span>
+      {% endif %}
+      {% if login_status.is_never %}
+        <span class="badge">Never logged in</span>
+      {% elif login_status.is_stale %}
+        <span class="badge">Inactive {% if login_status.relative %}{{ login_status.relative }}{% elif login_status.days_inactive is not none %}{{ login_status.days_inactive }} day{{ 's' if login_status.days_inactive != 1 else '' }} ago{% else %}recently{% endif %}</span>
+      {% endif %}
+    </div>
+    <div class="agent-hero__dates muted small">
+      <span>Last login {{ agent_last_login or '—' }}{% if agent_last_login_relative %} • {{ agent_last_login_relative }}{% endif %}</span>
+      <span>Last updated {{ agent_updated or '—' }}</span>
+    </div>
+  </div>
+</section>
+
+<section class="admin-section">
+  <div class="stat-grid">
+    <article class="stat-card">
+      <span class="stat-card__label">Cars created</span>
+      <span class="stat-card__value">{{ stats.created_count }}</span>
+      <span class="stat-card__hint muted small">
+        {% if stats.created_count and stats.created_shown < stats.created_count %}
+          Showing latest {{ stats.created_shown }}
+        {% else %}
+          Recorded from audit logs
+        {% endif %}
+      </span>
+    </article>
+    <article class="stat-card">
+      <span class="stat-card__label">Admin actions</span>
+      <span class="stat-card__value">{{ stats.total_actions }}</span>
+      {% if stats.last_activity %}
+      <span class="stat-card__hint muted small">Last activity {{ stats.last_activity }}</span>
+      {% else %}
+      <span class="stat-card__hint muted small">No activity yet</span>
+      {% endif %}
+    </article>
+    <article class="stat-card">
+      <span class="stat-card__label">Last login</span>
+      <span class="stat-card__value">{{ agent_last_login or '—' }}</span>
+      <span class="stat-card__hint muted small">
+        {% if agent_last_login_relative %}
+          {{ agent_last_login_relative }}
+        {% else %}
+          {% if login_status.is_never %}No login recorded yet{% else %}—{% endif %}
+        {% endif %}
+        {% if login_status.is_stale %} • Needs attention{% endif %}
+      </span>
+    </article>
+  </div>
+</section>
+
+{% if activity_breakdown %}
+<section class="admin-section">
+  <header class="section-heading">
+    <div>
+      <h2>Activity breakdown</h2>
+      <p class="muted small">Share of actions captured across the entire audit history.</p>
+    </div>
+  </header>
+  <div class="stat-grid">
+    {% for item in activity_breakdown %}
+      <article class="stat-card">
+        <span class="stat-card__label">{{ item.label }}</span>
+        <span class="stat-card__value">{{ item.count }}</span>
+        <span class="stat-card__hint muted small">{{ ('%.1f' % item.percent) if item.percent else '0.0' }}% of activity</span>
+      </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="admin-section">
+  <header class="section-heading">
+    <div>
+      <h2>Cars added by {{ agent.username }}</h2>
+      <p class="muted small">
+        Pulled from create actions in the admin audit trail.
+        {% if stats.created_count and stats.created_shown < stats.created_count %}
+          Showing latest {{ stats.created_shown }} (of {{ stats.created_count }} total).
+        {% endif %}
+      </p>
+    </div>
+    <span class="tag">{{ created_total }} total</span>
+  </header>
+  {% if created_listings %}
+    <div class="table-card">
+      <div class="table-card__body">
+        <table class="table tight">
+          <thead>
+            <tr>
+              <th>Listing</th>
+              <th>Status</th>
+              <th>Created</th>
+              <th class="actions">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for listing in created_listings %}
+            <tr>
+              <td>
+                <div class="listing-title">
+                  {% if listing.link %}
+                    <a href="{{ listing.link }}">{{ listing.title }}</a>
+                  {% else %}
+                    {{ listing.title }}
+                  {% endif %}
+                </div>
+                <div class="listing-meta muted small">
+                  {% if listing.vin %}<span>VIN {{ listing.vin }}</span>{% endif %}
+                  {% if listing.price_display %}<span>• {{ listing.price_display }}</span>{% endif %}
+                  {% if listing.source_label %}<span>• {{ listing.source_label }}</span>{% endif %}
+                </div>
+              </td>
+              <td>
+                {% if listing.status_label %}
+                  <span class="pill subtle">{{ listing.status_label }}</span>
+                {% else %}
+                  <span class="muted small">—</span>
+                {% endif %}
+              </td>
+              <td>{{ listing.created_display or '—' }}</td>
+              <td class="actions">
+                {% if listing.link %}
+                  <a class="button ghost small" href="{{ listing.link }}">Open</a>
+                {% else %}
+                  <span class="muted small">—</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% else %}
+    <p class="muted">No cars have been added by this agent yet.</p>
+  {% endif %}
+</section>
+
+<section class="admin-section">
+  <header class="section-heading">
+    <div>
+      <h2>Recent activity</h2>
+      <p class="muted small">Showing the latest {{ activity|length }} of {{ stats.total_actions }} event{{ 's' if stats.total_actions != 1 else '' }} (max {{ activity_limit }}).</p>
+    </div>
+  </header>
+  {% if activity %}
+    <ol class="activity-timeline">
+      {% for item in activity %}
+      <li class="timeline-item">
+        <div class="timeline-item__marker"></div>
+        <div class="timeline-item__content">
+          <div class="timeline-item__meta">
+            <span class="badge {{ item.badge_class }}">{{ item.action_label }}</span>
+            <span class="muted small">{{ item.timestamp or 'Unknown time' }}</span>
+          </div>
+          <div class="timeline-item__title">
+            {% if item.car and item.car.link %}
+              <a href="{{ item.car.link }}">{{ item.car.title }}</a>
+            {% elif item.car %}
+              {{ item.car.title }}
+            {% else %}
+              {{ item.table_label or 'Activity' }}
+            {% endif %}
+          </div>
+          <div class="timeline-item__subtitle muted small">
+            {{ item.action_label }} {{ item.table_label|lower if item.table_label else '' }}
+          </div>
+          {% if item.car %}
+          <div class="timeline-item__details muted small">
+            {% if item.car.vin %}<span>VIN {{ item.car.vin }}</span>{% endif %}
+            {% if item.car.status_label %}<span>• {{ item.car.status_label }}</span>{% endif %}
+            {% if item.car.source_label %}<span>• {{ item.car.source_label }}</span>{% endif %}
+          </div>
+          {% endif %}
+          {% if item.changes %}
+          <div class="timeline-item__changes">
+            <span class="muted small">Key fields touched</span>
+            <div class="timeline-item__chips">
+              {% for change in item.changes %}
+                <span class="pill subtle small">{{ change }}</span>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ol>
+  {% else %}
+    <p class="muted">No audit records are associated with this agent yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

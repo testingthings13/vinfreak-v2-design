@@ -1,0 +1,62 @@
+{% extends "_base.html" %}
+{% block content %}
+<section class="page-header">
+  <div>
+    <h1>Dealer Profiles</h1>
+    <p class="muted">Review dealer applications and manage approvals.</p>
+  </div>
+  <span class="tag">{{ profiles|length }} profiles</span>
+</section>
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Applications</h2>
+        <p class="muted small">Approve and assign dealerships before granting access.</p>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      <div class="table-card">
+        <div class="table-card__body">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Dealership</th>
+                <th>Status</th>
+                <th>Owner</th>
+                <th>Requested</th>
+                <th>Assigned</th>
+                <th>Updated</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in profiles %}
+              <tr>
+                <td>{{ p.display_name or "Unnamed" }}</td>
+                <td><span class="badge">{{ p.status or "pending" }}</span></td>
+                <td>
+                  {% set owner = user_map.get(p.owner_user_id) %}
+                  {{ owner.email if owner else "" }}
+                </td>
+                <td>
+                  {% set requested = requested_map.get(p.requested_dealership_id) %}
+                  {{ requested.name if requested else (p.requested_dealership_id or "") }}
+                </td>
+                <td>
+                  {% set assigned = assigned_map.get(p.id) %}
+                  {{ assigned.name if assigned else "" }}
+                </td>
+                <td class="muted small">{{ p.updated_at or p.created_at or "" }}</td>
+                <td class="actions"><a href="/admin/dealers/{{ p.id }}">Review</a></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </article>
+</section>
+{% endblock %}

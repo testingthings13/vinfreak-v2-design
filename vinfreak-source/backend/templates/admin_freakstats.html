@@ -1,0 +1,522 @@
+{% extends "_base.html" %}
+{% block content %}
+<section class="page-header">
+  <div>
+    <h1>FreakGPT prompts</h1>
+    <p class="muted">Shape how Grok speaks about each listing and control the loading experience.</p>
+  </div>
+</section>
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Prompt templates</h2>
+        <p class="muted small">Fine-tune the system context and user template to guide insights.</p>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      <form class="form elevated" action="/admin/freakstats" method="post" enctype="multipart/form-data">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <fieldset>
+          <legend>Non-auction dealerships</legend>
+          <label>
+            <span>System prompt</span>
+            <textarea name="freakstats_system_prompt" rows="6">{{ freakstats_system_prompt }}</textarea>
+            <small class="field-hint">Sent as the system message for dealership listings.</small>
+          </label>
+          <label>
+            <span>User prompt template</span>
+            <textarea name="freakstats_user_prompt" rows="12">{{ freakstats_user_prompt }}</textarea>
+            <small class="field-hint">You can reference placeholders like <code>{url}</code>, <code>{vehicle_line}</code>, <code>{example_sentence}</code>, <code>{year}</code>, <code>{make}</code>, <code>{model}</code>, <code>{trim}</code>, <code>{location}</code>, <code>{price_example}</code>, <code>{mileage_example}</code>, <code>{dealership_example}</code>, and <code>{currency}</code>.</small>
+          </label>
+          <label>
+            <span>Apply to statuses</span>
+            <textarea name="freakstats_retail_statuses" rows="3" placeholder="AVAILABLE, LIVE">{{ freakstats_retail_statuses }}</textarea>
+            <small class="field-hint">List the listing statuses that should always use the non-auction prompt. Separate with commas or new lines. Leave blank to apply to every other status.</small>
+          </label>
+        </fieldset>
+        <fieldset>
+          <legend>Auction listings</legend>
+          <label>
+            <span>System prompt</span>
+            <textarea name="freakstats_system_prompt_auction" rows="6">{{ freakstats_system_prompt_auction }}</textarea>
+            <small class="field-hint">Overrides the system message whenever the car comes from an auction source.</small>
+          </label>
+          <label>
+            <span>User prompt template</span>
+            <textarea name="freakstats_user_prompt_auction" rows="12">{{ freakstats_user_prompt_auction }}</textarea>
+            <small class="field-hint">Supports the same placeholders and is only used when the listing is detected as an auction.</small>
+          </label>
+          <label>
+            <span>Apply to statuses</span>
+            <textarea name="freakstats_auction_statuses" rows="3" placeholder="AUCTION_IN_PROGRESS, LIVE_AUCTION">{{ freakstats_auction_statuses }}</textarea>
+            <small class="field-hint">Only listings whose status matches one of these values will use the auction prompt. Separate values with commas or new lines.</small>
+          </label>
+        </fieldset>
+        <fieldset>
+          <legend>Loader image</legend>
+          <p class="field-hint">Choose the image shown while FreakGPT insights are loading. Leave blank to hide the image.</p>
+          <div class="form-grid two">
+            <label><span>Upload loader image</span><input type="file" name="freakstats_loader"></label>
+            <label><span>Loader image URL</span><input type="text" name="freakstats_loader_url" value="{{ freakstats_loader_url }}" placeholder="https://example.com/loader.png"></label>
+          </div>
+          {% if freakstats_loader_url %}
+          <div class="preview">
+            <img src="{{ freakstats_loader_url }}" alt="Current FreakGPT loader" style="max-width:160px;max-height:160px;object-fit:contain;border-radius:12px;border:1px solid rgba(255,255,255,.18);padding:8px;background:rgba(255,255,255,.04)">
+          </div>
+          {% endif %}
+        </fieldset>
+        <div class="form-actions">
+          <button type="submit" class="button primary">Save prompts</button>
+        </div>
+      </form>
+      <hr class="divider">
+      <section class="preview" aria-labelledby="freakstats-preload-heading">
+        <div>
+          <h3 id="freakstats-preload-heading">Auction preload</h3>
+          <p class="muted small">
+            Warm cache for AUCTION_IN_PROGRESS listings so the FreakStats modal opens instantly.
+            Facebook Marketplace listings are skipped by excluding dealership ID {{ freakstats_preload_excluded_dealership_id }}.
+          </p>
+        </div>
+        <form class="form elevated" action="/admin/freakstats/preload-auctions" method="post">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <div class="form-grid two">
+            <label>
+              <span>Status</span>
+              <input type="text" value="{% if freakstats_preload_status.running %}Running{% else %}Idle{% endif %}" readonly>
+            </label>
+            <label>
+              <span>Progress</span>
+              <input type="text" value="{{ freakstats_preload_status.processed }} / {{ freakstats_preload_status.total }} ({{ freakstats_preload_status.progress_pct }}%)" readonly>
+            </label>
+            <label>
+              <span>Last started</span>
+              <input type="text" value="{{ freakstats_preload_status.started_display }}" readonly>
+            </label>
+            <label>
+              <span>Last finished</span>
+              <input type="text" value="{{ freakstats_preload_status.finished_display }}" readonly>
+            </label>
+            <label>
+              <span>Generated</span>
+              <input type="text" value="{{ freakstats_preload_status.generated }}" readonly>
+            </label>
+            <label>
+              <span>Cache hits</span>
+              <input type="text" value="{{ freakstats_preload_status.cached }}" readonly>
+            </label>
+            <label>
+              <span>Skipped</span>
+              <input type="text" value="{{ freakstats_preload_status.skipped }}" readonly>
+            </label>
+            <label>
+              <span>Errors</span>
+              <input type="text" value="{{ freakstats_preload_status.errors }}" readonly>
+            </label>
+          </div>
+          {% if freakstats_preload_status.last_error %}
+          <p class="flash error">{{ freakstats_preload_status.last_error }}</p>
+          {% endif %}
+          <div class="form-actions">
+            <button type="submit" class="button primary" {% if freakstats_preload_status.running %}disabled{% endif %}>
+              {% if freakstats_preload_status.running %}Preload running…{% else %}Preload auction insights{% endif %}
+            </button>
+          </div>
+        </form>
+        <div class="form-actions">
+          <form action="/admin/freakstats/cache/clear" method="post">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <button type="submit" class="button ghost">Clear insights cache</button>
+          </form>
+          <form action="/admin/freakstats/preload-auctions/relaunch" method="post">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <button type="submit" class="button" {% if freakstats_preload_status.running %}disabled{% endif %}>
+              Clear cache + relaunch preload
+            </button>
+          </form>
+        </div>
+      </section>
+      <hr class="divider">
+      <section class="preview grok-preview" aria-labelledby="freakstats-preview-heading">
+        <div class="grok-preview__shell">
+          <div class="grok-preview__intro">
+            <div class="grok-preview__title">
+              <h3 id="freakstats-preview-heading">Preview with Grok</h3>
+              <p class="muted small">Try your unsaved prompts against a specific listing before publishing them.</p>
+            </div>
+            <div class="grok-preview__badge" aria-hidden="true">LIVE</div>
+          </div>
+          <form id="freakstats-preview-form" class="form grok-preview__form" novalidate>
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <div class="grok-preview__grid">
+              <label class="grok-preview__field grok-preview__field--car">
+                <span class="field-label">Sample car</span>
+                <div class="grok-preview__car-picker">
+                  <select name="car_reference" data-random-car-select disabled>
+                    <option>Summoning a lineup…</option>
+                  </select>
+                  <button type="button" class="button ghost grok-preview__refresh" data-random-car-refresh title="Refresh lineup" aria-label="Refresh lineup of random cars">
+                    <span class="icon" aria-hidden="true">↺</span>
+                  </button>
+                </div>
+                <small class="field-hint">Choose a sample listing from your inventory to preview Grok.</small>
+                <small class="field-hint" data-random-car-status aria-live="polite"></small>
+              </label>
+              <fieldset class="grok-preview__field grok-preview__field--variants">
+                <legend>Prompt focus</legend>
+                <div class="grok-preview__variants" role="group" aria-label="Choose which prompt to preview">
+                  <label class="grok-preview__chip">
+                    <input type="radio" name="preview_variant" value="auto" checked>
+                    <span>Auto detect</span>
+                  </label>
+                  <label class="grok-preview__chip">
+                    <input type="radio" name="preview_variant" value="retail">
+                    <span>Non-auction dealerships</span>
+                  </label>
+                  <label class="grok-preview__chip">
+                    <input type="radio" name="preview_variant" value="auction">
+                    <span>Auction listings</span>
+                  </label>
+                </div>
+                <small class="field-hint">Instantly flip between your auction and non-auction prompt templates.</small>
+              </fieldset>
+            </div>
+            <div class="form-actions grok-preview__actions">
+              <button type="submit" class="button grok-preview__trigger">Preview with Grok</button>
+            </div>
+          </form>
+          <p class="muted small" id="freakstats-preview-variant" aria-live="polite"></p>
+          <div class="flash error" id="freakstats-preview-error" hidden aria-live="assertive"></div>
+          <div class="preview-output grok-preview__output">
+            <div id="freakstats-preview-output" class="prose"></div>
+            <details id="freakstats-preview-prompt-wrapper" class="preview-prompt" hidden>
+              <summary class="small">Show generated prompt</summary>
+              <pre id="freakstats-preview-prompt"></pre>
+            </details>
+          </div>
+        </div>
+      </section>
+    </div>
+  </article>
+</section>
+<script>
+(function(){
+  const previewForm = document.getElementById('freakstats-preview-form');
+  if (!previewForm) return;
+  const adminForm = document.querySelector('form[action="/admin/freakstats"]');
+  if (!adminForm) return;
+  const output = document.getElementById('freakstats-preview-output');
+  const promptWrapper = document.getElementById('freakstats-preview-prompt-wrapper');
+  const promptOutput = document.getElementById('freakstats-preview-prompt');
+  const errorBox = document.getElementById('freakstats-preview-error');
+  const variantLabel = document.getElementById('freakstats-preview-variant');
+  const submitButton = previewForm.querySelector('button[type="submit"]');
+  const carField = previewForm.querySelector('[name="car_reference"]');
+  const csrfInput = previewForm.querySelector('input[name="csrf"]');
+  const carSelect = previewForm.querySelector('[data-random-car-select]');
+  const carRefreshButton = previewForm.querySelector('[data-random-car-refresh]');
+  const carStatusHint = previewForm.querySelector('[data-random-car-status]');
+  const variantInputs = previewForm.querySelectorAll('input[name="preview_variant"]');
+  const fieldNames = [
+    'freakstats_system_prompt',
+    'freakstats_user_prompt',
+    'freakstats_system_prompt_auction',
+    'freakstats_user_prompt_auction',
+    'freakstats_retail_statuses',
+    'freakstats_auction_statuses'
+  ];
+
+  function buildCarLabel(car) {
+    if (!car || typeof car !== 'object') {
+      return 'Unknown car';
+    }
+    const year = car.year ? String(car.year) : '';
+    const make = (car.make || '').trim();
+    const model = (car.model || '').trim();
+    const title = (car.title || '').trim();
+    const pieces = [];
+    if (year) pieces.push(year);
+    if (make) pieces.push(make);
+    if (model) pieces.push(model);
+    if (!pieces.length && title) {
+      return title;
+    }
+    if (title && !title.toLowerCase().includes(pieces.join(' ').toLowerCase())) {
+      pieces.push(`• ${title}`);
+    }
+    const finalLabel = pieces.join(' ');
+    return finalLabel || title || 'Untitled listing';
+  }
+
+  function setCarStatus(message) {
+    if (carStatusHint) {
+      carStatusHint.textContent = message || '';
+    }
+  }
+
+  function getSelectedVariant() {
+    if (!variantInputs || !variantInputs.length) {
+      return 'auto';
+    }
+    for (const input of variantInputs) {
+      if (input && input.checked) {
+        return input.value || 'auto';
+      }
+    }
+    return 'auto';
+  }
+
+  async function loadRandomCars() {
+    if (!carSelect || typeof fetch !== 'function') {
+      return;
+    }
+    try {
+      if (carRefreshButton) {
+        carRefreshButton.disabled = true;
+        if (!carRefreshButton.classList.contains('is-spinning')) {
+          carRefreshButton.classList.add('is-spinning');
+        }
+      }
+      carSelect.disabled = true;
+      carSelect.innerHTML = '<option>Loading random cars…</option>';
+      setCarStatus('Loading 10 random cars…');
+      if (carField) {
+        carField.value = '';
+      }
+      const previousValue = (carField && typeof carField.value === 'string') ? carField.value.trim() : '';
+      const response = await fetch('/cars?limit=200', {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json' }
+      });
+      if (!response.ok) {
+        throw new Error('Unable to load random cars right now.');
+      }
+      const payload = await response.json();
+      const items = Array.isArray(payload && payload.items)
+        ? payload.items
+        : Array.isArray(payload && payload.results)
+          ? payload.results
+          : Array.isArray(payload)
+            ? payload
+            : [];
+      const candidates = items
+        .map((item) => (item && typeof item === 'object') ? item : null)
+        .filter(Boolean)
+        .map((item) => {
+          const rawId = item.id ?? item.car_id ?? item.carId ?? item.uuid ?? item.slug ?? null;
+          const idValue = rawId != null ? String(rawId).trim() : '';
+          if (!idValue) {
+            return null;
+          }
+          return { car: item, id: idValue };
+        })
+        .filter(Boolean);
+      if (!candidates.length) {
+        throw new Error('No cars available for preview. Try importing or refreshing.');
+      }
+      const shuffled = candidates.slice();
+      for (let i = shuffled.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const tmp = shuffled[i];
+        shuffled[i] = shuffled[j];
+        shuffled[j] = tmp;
+      }
+      const sample = shuffled.slice(0, 10);
+      carSelect.innerHTML = '';
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Choose a car from the lineup…';
+      carSelect.appendChild(placeholder);
+      let restored = false;
+      let firstOption = null;
+      sample.forEach(({ car, id }) => {
+        const option = document.createElement('option');
+        option.value = id;
+        option.dataset.carId = id;
+        try {
+          option.dataset.carJson = JSON.stringify(car);
+        } catch (err) {
+          option.dataset.carJson = '';
+        }
+        option.textContent = buildCarLabel(car);
+        if (!firstOption) {
+          firstOption = option;
+        }
+        if (!restored && previousValue && id === previousValue) {
+          option.selected = true;
+          restored = true;
+        }
+        carSelect.appendChild(option);
+      });
+      carSelect.disabled = false;
+      if (!restored && firstOption) {
+        firstOption.selected = true;
+      }
+      const selected = carSelect.options[carSelect.selectedIndex];
+      if (selected && selected.value) {
+        const selectedLabel = selected.textContent || 'sample car';
+        setCarStatus(`Selected ${selectedLabel}`);
+        if (carField) {
+          carField.value = selected.value;
+        }
+        carSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      } else {
+        if (carField) {
+          carField.value = '';
+        }
+        setCarStatus('Loaded sample cars. Pick one or refresh for more.');
+      }
+    } catch (err) {
+      carSelect.innerHTML = '<option value="">Unable to load cars</option>';
+      carSelect.disabled = true;
+      setCarStatus(err && err.message ? err.message : 'Unable to load random cars.');
+    } finally {
+      if (carRefreshButton) {
+        carRefreshButton.disabled = false;
+        carRefreshButton.classList.remove('is-spinning');
+      }
+    }
+  }
+
+  if (carSelect && carField) {
+    carSelect.addEventListener('change', () => {
+      const selected = carSelect.options[carSelect.selectedIndex];
+      if (!selected) return;
+      const id = selected.dataset && selected.dataset.carId ? selected.dataset.carId : selected.value;
+      if (id && carField) {
+        carField.value = id;
+        const labelText = selected.textContent || '';
+        if (labelText) {
+          setCarStatus(`Selected ${labelText}`);
+        }
+      } else if (carField) {
+        carField.value = '';
+        setCarStatus('Choose a car from the lineup to preview.');
+      }
+    });
+  }
+
+  if (carRefreshButton) {
+    carRefreshButton.addEventListener('click', () => {
+      if (carRefreshButton.disabled) return;
+      setCarStatus('Refreshing lineup…');
+      loadRandomCars();
+    });
+  }
+
+  loadRandomCars();
+
+  previewForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!submitButton) return;
+
+    const formData = new FormData();
+    if (csrfInput) {
+      formData.append('csrf', csrfInput.value);
+    }
+    const carValue = carField && typeof carField.value === 'string'
+      ? carField.value.trim()
+      : '';
+    if (!carValue) {
+      setCarStatus('Please choose a car from the lineup before previewing.');
+      previewForm.classList.remove('is-loading');
+      submitButton.disabled = false;
+      return;
+    }
+    formData.append('car_reference', carValue);
+    const requestedVariant = getSelectedVariant();
+    fieldNames.forEach((name) => {
+      const field = adminForm.querySelector(`[name="${name}"]`);
+      if (field) {
+        formData.append(name, field.value);
+      }
+    });
+    formData.append('preview_variant', requestedVariant);
+
+    output.innerHTML = '';
+    if (promptOutput) {
+      promptOutput.textContent = '';
+    }
+    if (promptWrapper) {
+      promptWrapper.hidden = true;
+    }
+    if (errorBox) {
+      errorBox.textContent = '';
+      errorBox.hidden = true;
+    }
+    if (variantLabel) {
+      variantLabel.textContent = '';
+    }
+
+    submitButton.disabled = true;
+    previewForm.classList.add('is-loading');
+
+    try {
+      const response = await fetch('/admin/freakstats/preview', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json' },
+        body: formData
+      });
+
+      let payload = null;
+      try {
+        payload = await response.json();
+      } catch (err) {
+        payload = null;
+      }
+
+      if (!response.ok) {
+        const message = payload && payload.detail ? payload.detail : 'Unable to load preview.';
+        throw new Error(message);
+      }
+
+      if (payload && typeof payload.html === 'string' && payload.html.trim()) {
+        output.innerHTML = payload.html;
+      } else if (payload && typeof payload.markdown === 'string') {
+        output.textContent = payload.markdown;
+      } else {
+        output.textContent = 'Preview returned no content.';
+      }
+
+      if (promptOutput && payload && typeof payload.prompt === 'string' && payload.prompt) {
+        promptOutput.textContent = payload.prompt;
+        if (promptWrapper) {
+          promptWrapper.hidden = false;
+        }
+      }
+
+      if (variantLabel && payload && payload.variant) {
+        const variantKey = payload.variant === 'auction' ? 'auction' : 'retail';
+        let variantText = '';
+        if (variantKey === 'auction') {
+          variantText = requestedVariant === 'auction'
+            ? 'Using Auction listings prompt (manual)'
+            : requestedVariant === 'auto'
+              ? 'Auto-detected Auction listings prompt'
+              : 'Forced Auction listings prompt';
+        } else {
+          variantText = requestedVariant === 'retail'
+            ? 'Using Non-auction dealerships prompt (manual)'
+            : requestedVariant === 'auto'
+              ? 'Auto-detected Non-auction dealerships prompt'
+              : 'Forced Non-auction dealerships prompt';
+        }
+        variantLabel.textContent = variantText;
+      }
+    } catch (err) {
+      if (errorBox) {
+        errorBox.textContent = err && err.message ? err.message : 'Unable to load preview.';
+        errorBox.hidden = false;
+      }
+    } finally {
+      submitButton.disabled = false;
+      previewForm.classList.remove('is-loading');
+    }
+  });
+})();
+</script>
+{% endblock %}

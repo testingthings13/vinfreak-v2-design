@@ -1,0 +1,52 @@
+{% extends "_base.html" %}
+{% block content %}
+<section class="page-header">
+  <div>
+    <h1>Brand library</h1>
+    <p class="muted">Keep every marque aligned with crisp logos across search results and detail pages.</p>
+  </div>
+</section>
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Add a logo</h2>
+        <p class="muted small">Upload artwork and it will auto-link to matching makes and listings.</p>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      <form class="form elevated" action="/admin/car-logos/new" method="post" enctype="multipart/form-data">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <div class="form-grid two">
+          <label><span>Brand name</span><input type="text" name="name" required></label>
+          <label><span>Logo file</span><input type="file" name="logo" accept="image/*"></label>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="button primary">Save logo</button>
+        </div>
+      </form>
+
+      <div class="table-card">
+        <div class="table-card__body">
+          <table class="table">
+            <thead><tr><th>Logo</th><th>Brand</th><th>Linked Cars</th><th></th></tr></thead>
+            <tbody>
+            {% for make in makes %}
+              <tr>
+                <td>{% if make.logo_url %}<img src="{{ make.logo_url }}" alt="{{ make.name }} logo" class="admin-logo">{% endif %}</td>
+                <td>{{ make.name }}</td>
+                <td>{{ make.car_count }}</td>
+                <td class="actions"><a href="/admin/car-logos/{{ make.id }}">Edit</a> | <a href="/admin/car-logos/{{ make.id }}/delete" onclick="return confirm('Delete this logo?')">Delete</a></td>
+              </tr>
+            {% else %}
+              <tr><td colspan="4" class="muted">No logos yet. Add one using the form above.</td></tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </article>
+</section>
+{% endblock %}

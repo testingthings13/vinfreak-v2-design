@@ -1,0 +1,90 @@
+{% extends "_base.html" %}
+{% block content %}
+<section class="page-header">
+  <div>
+    <h1>FreakEstimate</h1>
+    <p class="muted">Let Grok scout the web for pricing intel, Monroney highlights, and comps in under a minute.</p>
+  </div>
+</section>
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>What's my car worth?</h2>
+        <p class="muted small">Feed FreakAI a VIN and optional mileage to generate a Grok-powered pricing brief.</p>
+      </div>
+      <div class="muted small">Model: {{ result_model }}</div>
+    </header>
+    <div class="card-panel__body">
+      <form method="post" action="/admin/freakestimate" class="form elevated" novalidate>
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <div class="form-grid two">
+          <label>
+            <span>VIN</span>
+            <input
+              type="text"
+              name="vin"
+              value="{{ form.vin }}"
+              maxlength="32"
+              autocomplete="off"
+              placeholder="1HGCM82633A004352"
+              required
+            >
+            <small class="field-hint">We decode and validate the VIN before prompting Grok.</small>
+          </label>
+          <label>
+            <span>Mileage (optional)</span>
+            <input
+              type="text"
+              name="mileage"
+              value="{{ form.mileage }}"
+              autocomplete="off"
+              placeholder="42,500"
+            >
+            <small class="field-hint">Include odometer miles for tighter pricing guidance.</small>
+          </label>
+        </div>
+        <label>
+          <span>Additional notes (optional)</span>
+          <textarea
+            name="notes"
+            rows="3"
+            placeholder="Premium package, ceramic coated, California car"
+          >{{ form.notes }}</textarea>
+          <small class="field-hint">List packages, condition, or region so Grok can tailor the research.</small>
+        </label>
+        {% if error %}
+        <div class="flash error" role="alert">{{ error }}</div>
+        {% endif %}
+        <div class="form-actions">
+          <button type="submit" class="button primary">Generate FreakEstimate</button>
+          {% if result_duration %}
+          <p class="muted small">Last run {{ '%.1f'|format(result_duration) }}s via {{ result_model }}</p>
+          {% endif %}
+        </div>
+      </form>
+      {% if result_markdown %}
+      <hr class="divider">
+      <section class="preview" aria-live="polite">
+        <header class="card-panel__header" style="padding-left:0;padding-right:0;">
+          <div>
+            <h3>FreakEstimate briefing</h3>
+            <p class="muted small">Rendered using Grok's Markdown response for easy sharing.</p>
+          </div>
+        </header>
+        <div class="preview-output grok-preview__output" style="margin-top:0;">
+          <div class="prose">
+            {{ result_html | safe }}
+          </div>
+        </div>
+        <details class="preview-prompt">
+          <summary class="small">Show raw Grok response</summary>
+          <pre>{{ result_raw }}</pre>
+        </details>
+      </section>
+      {% endif %}
+    </div>
+  </article>
+</section>
+{% endblock %}

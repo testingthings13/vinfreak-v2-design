@@ -1,0 +1,60 @@
+{% extends "_base.html" %}
+{% block content %}
+<section class="page-header">
+  <div>
+    <h1>Dealerships</h1>
+    <p class="muted">Manage trusted partners and keep their branding current.</p>
+  </div>
+  <span class="tag">{{ dealerships|length }} partners</span>
+</section>
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Add a dealership</h2>
+        <p class="muted small">Provide the basics and we’ll sync the rest from their listings.</p>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      <form class="form elevated" action="/admin/dealerships/new" method="post" enctype="multipart/form-data">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <div class="form-grid two">
+          <label><span>Name</span><input type="text" name="name" required></label>
+          <label><span>Location</span><input type="text" name="location" placeholder="City, ST"></label>
+          <label><span>Logo file</span><input type="file" name="logo"></label>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="button primary">Add dealership</button>
+        </div>
+      </form>
+
+      <div class="table-card">
+        <div class="table-card__body">
+          <table class="table">
+            <thead><tr><th>Logo</th><th>Name</th><th>Location</th><th>Upload cars</th><th></th></tr></thead>
+            <tbody>
+            {% for d in dealerships %}
+              <tr>
+                <td>{% if d.logo_url %}<img src="{{ d.logo_url }}" alt="logo" class="admin-logo">{% endif %}</td>
+                <td>{{ d.name }}</td>
+                <td>{{ d.location or "" }}</td>
+                <td>
+                  <form class="inline dealership-upload" action="/admin/dealerships/{{ d.id }}/upload-cars" method="post" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf" value="{{ csrf }}">
+                    <input type="file" name="file" accept="application/json,.json" required>
+                    <button type="submit" class="button small">Upload</button>
+                  </form>
+                  <p class="muted small">Attach a JSON array of cars for {{ d.name }}.</p>
+                </td>
+                <td class="actions"><a href="/admin/dealerships/{{ d.id }}">Edit</a> | <a href="/admin/dealerships/{{ d.id }}/delete" onclick="return confirm('Delete?')">Delete</a></td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </article>
+</section>
+{% endblock %}

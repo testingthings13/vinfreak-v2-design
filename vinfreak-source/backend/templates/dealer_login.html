@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ title or "Dealer Login" }}</title>
+  <link rel="stylesheet" href="/static/admin.css">
+</head>
+<body class="login-shell">
+  <article class="card-panel login-panel">
+    <div class="brand-mark">
+      <div class="brand-mark__logo">VF</div>
+      <div>
+        <h1>VINFREAK Dealer Hub</h1>
+        <p class="muted">Sign in to manage your inventory.</p>
+      </div>
+    </div>
+    {% if flash %}
+      <div class="flash-wrap">
+        {% for f in flash %}
+          <div class="flash {{ f.cat }}">{{ f.msg }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+    <form class="form elevated" method="post" action="{{ portal_base }}/login">
+      <input type="hidden" name="csrf" value="{{ csrf }}"/>
+      <label>
+        <span>Email</span>
+        <input id="email" name="email" type="email" autocomplete="username" required>
+      </label>
+      <label>
+        <span>Password</span>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+      </label>
+      <div class="form-actions">
+        <button class="button primary" type="submit">Sign in</button>
+      </div>
+    </form>
+    <footer>
+      <span>Need access? Apply for a dealer account.</span>
+      <a href="{{ dealer_apply_url }}">Dealer signup</a>
+    </footer>
+  </article>
+</body>
+</html>

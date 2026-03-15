@@ -1,0 +1,133 @@
+{% extends "_base.html" %}
+{% block content %}
+{% set perms = request.session.get('permissions') or [] %}
+{% set is_super = request.session.get('is_superadmin') %}
+
+<section class="page-header">
+  <div>
+    <h1>Jobs</h1>
+    <p class="muted">Track background runs, progress messages, and completion results.</p>
+    <p class="muted small">Auto-refreshes every 5 seconds.</p>
+  </div>
+</section>
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Background Jobs</h2>
+        <p class="muted small">NeuroWraith and Facebook Marketplace jobs across this admin runtime.</p>
+        {% if background_jobs_backend %}
+        <p class="muted small">
+          Queue backend: {{ background_jobs_backend.summary }}
+        </p>
+        {% endif %}
+      </div>
+      {% if is_super %}
+      <div class="actions">
+        <form method="post" action="/admin/jobs/cache/clear">
+          <input type="hidden" name="csrf" value="{{ csrf }}" />
+          <input type="hidden" name="next" value="/admin/jobs" />
+          <button class="button small danger" type="submit">Clear Job Cache</button>
+        </form>
+      </div>
+      {% endif %}
+    </header>
+    <div class="card-panel__body">
+      {% if jobs_rows %}
+      <div class="table-card">
+        <div class="table-card__body">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>System</th>
+                <th>Status</th>
+                <th>Target</th>
+                <th>Started</th>
+                <th>Updated</th>
+                <th>Elapsed</th>
+                <th>Message</th>
+                <th>Result</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for job in jobs_rows %}
+              <tr>
+                <td>{{ job.system }}</td>
+                <td>
+                  {% if job.stop_forced %}
+                  <span class="badge warning">Stopped</span>
+                  {% elif job.stop_requested and not job.is_done %}
+                  <span class="badge warning">Stopping</span>
+                  {% elif job.status == 'succeeded' %}
+                  <span class="badge success">Succeeded</span>
+                  {% elif job.status == 'failed' %}
+                  <span class="badge error">Failed</span>
+                  {% elif job.status == 'pending' %}
+                  {% set pending_message = (job.message or '')|lower %}
+                  {% if 'queued' in pending_message %}
+                  <span class="badge info">Queued</span>
+                  {% elif 'start' in pending_message %}
+                  <span class="badge info">Starting</span>
+                  {% else %}
+                  <span class="badge info">Pending</span>
+                  {% endif %}
+                  {% else %}
+                  <span class="badge info">{{ job.status|title }}</span>
+                  {% endif %}
+                </td>
+                <td>{{ job.subject }}</td>
+                <td>{{ job.started_at }}</td>
+                <td>{{ job.updated_at }}</td>
+                <td>{{ job.elapsed }}</td>
+                <td class="job-message-cell">
+                  <span class="job-message-text">{{ job.message or "-" }}</span>
+                  {% if job.status == 'failed' and job.message %}
+                  <span class="job-info-tip">
+                    <button
+                      type="button"
+                      class="job-info-tip__trigger"
+                      aria-label="Why this job failed"
+                    >i</button>
+                    <span class="job-info-tip__bubble" role="tooltip">{{ job.message }}</span>
+                  </span>
+                  {% endif %}
+                </td>
+                <td>{{ job.result_summary }}</td>
+                <td>
+                  {% if job.can_stop and job.stop_url and not job.is_done and not job.stop_requested %}
+                  <form method="post" action="{{ job.stop_url }}">
+                    <input type="hidden" name="csrf" value="{{ csrf }}" />
+                    <input type="hidden" name="next" value="/admin/jobs" />
+                    <button class="button small danger" type="submit">Stop</button>
+                  </form>
+                  {% elif job.stop_requested and not job.is_done %}
+                  <span class="muted small">Stop requested</span>
+                  {% elif job.open_url %}
+                  <a class="button small" href="{{ job.open_url }}">{{ job.open_label }}</a>
+                  {% else %}
+                  <span class="muted small">-</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% else %}
+      <p class="muted small">No background jobs have been recorded yet.</p>
+      {% endif %}
+    </div>
+  </article>
+</section>
+
+<script>
+  (function () {
+    window.setTimeout(function () {
+      window.location.reload();
+    }, 5000);
+  })();
+</script>
+{% endblock %}

@@ -1,0 +1,91 @@
+{% extends "dealer_base.html" %}
+{% block content %}
+<section class="page-header">
+  <div>
+    <h1>Dealer dashboard</h1>
+    <p class="muted">Welcome back, {{ profile.display_name or profile.id }}.</p>
+  </div>
+  <a class="button primary" href="{{ portal_base }}/inventory/new">Add listing</a>
+</section>
+
+{% if not dealerships %}
+  <div class="flash error">No dealerships are assigned to this account yet.</div>
+{% else %}
+  <section class="admin-section">
+    <article class="card-panel">
+      <header class="card-panel__header">
+        <div>
+          <h2>Inventory snapshot</h2>
+          <p class="muted small">Status counts across your live inventory.</p>
+        </div>
+      </header>
+      <div class="card-panel__body">
+        <div class="stat-grid">
+          {% for status, count in status_counts.items() %}
+            <div class="stat-card">
+              <div class="stat-card__label">{{ status }}</div>
+              <div class="stat-card__value">{{ count }}</div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <section class="admin-section">
+    <article class="card-panel">
+      <header class="card-panel__header">
+        <div>
+          <h2>Your listings</h2>
+          <p class="muted small">Manage vehicles across {{ dealerships|length }} dealership(s).</p>
+        </div>
+      </header>
+      <div class="card-panel__body">
+        <div class="table-card">
+          <div class="table-card__body">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Image</th>
+                  <th>Vehicle</th>
+                  <th>Dealership</th>
+                  <th>Status</th>
+                  <th>Price</th>
+                  <th>Updated</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for car in cars %}
+                <tr>
+                  <td>
+                    {% if car.image_url %}
+                      <img src="{{ car.image_url }}" alt="car" class="admin-logo">
+                    {% endif %}
+                  </td>
+                  <td>
+                    <strong>{{ car.title or car.vin }}</strong><br>
+                    <span class="muted small">{{ car.year }} {{ car.make }} {{ car.model }}</span>
+                  </td>
+                  <td>{{ dealership_map.get(car.dealership_id).name if dealership_map.get(car.dealership_id) else '' }}</td>
+                  <td><span class="badge">{{ car.auction_status or "LIVE" }}</span></td>
+                  <td>{{ car.price or "" }}</td>
+                  <td class="muted small">{{ car.updated_at or car.created_at or "" }}</td>
+                  <td class="actions">
+                    <a href="{{ portal_base }}/inventory/{{ car.id }}">Edit</a>
+                    <form class="inline" method="post" action="{{ portal_base }}/inventory/{{ car.id }}/delete">
+                      <input type="hidden" name="csrf" value="{{ csrf }}">
+                      <button type="submit" class="button small" onclick="return confirm('Remove this listing?')">Remove</button>
+                    </form>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </article>
+  </section>
+{% endif %}
+{% endblock %}

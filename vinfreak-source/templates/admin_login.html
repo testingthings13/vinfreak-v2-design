@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ title or "Admin Login" }}</title>
+  <link rel="stylesheet" href="/static/admin.css">
+</head>
+<body class="login-shell">
+  <article class="card-panel login-panel">
+    <div class="brand-mark">
+      <div class="brand-mark__logo">VF</div>
+      <div>
+        <h1>VINFREAK Admin</h1>
+        <p class="muted">Authenticate to access the command deck.</p>
+      </div>
+    </div>
+    {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+    <form class="form elevated" method="post" action="/admin/login">
+      <input type="hidden" name="csrf" value="{{ csrf_token(request) }}"/>
+      <label>
+        <span>Username</span>
+        <input id="username" name="username" type="text" autocomplete="username" required>
+      </label>
+      <label>
+        <span>Password</span>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+      </label>
+      <div class="form-actions">
+        <button class="button primary" type="submit">Sign in</button>
+      </div>
+    </form>
+    <footer>
+      <span>Need help? Email <a href="mailto:support@vinfreak.com">support@vinfreak.com</a></span>
+    </footer>
+  </article>
+</body>
+</html>

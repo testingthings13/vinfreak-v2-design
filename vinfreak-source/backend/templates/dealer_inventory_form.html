@@ -1,0 +1,130 @@
+{% extends "dealer_base.html" %}
+{% block content %}
+<section class="page-header">
+  <div>
+    <h1>{{ "Edit listing" if car else "Create listing" }}</h1>
+    <p class="muted">Publish a clean dealer listing that shoppers can trust.</p>
+  </div>
+</section>
+
+{% if errors %}
+  <div class="flash error">
+    <ul>
+    {% for err in errors %}
+      <li>{{ err }}</li>
+    {% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Listing details</h2>
+        <p class="muted small">Keep the essentials crisp and accurate.</p>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      <form class="form elevated" method="post" action="{{ action }}" enctype="multipart/form-data">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+
+        <fieldset>
+          <legend>Vehicle</legend>
+          <div class="form-grid three">
+            <label>
+              <span>Title *</span>
+              <input type="text" name="title" value="{{ form_data.title if form_data else (car.title if car else '') }}" required>
+            </label>
+            <label>
+              <span>Year</span>
+              <input type="number" name="year" value="{{ form_data.year if form_data else (car.year if car else '') }}">
+            </label>
+            <label>
+              <span>VIN *</span>
+              <input type="text" name="vin" value="{{ form_data.vin if form_data else (car.vin if car else '') }}" required>
+            </label>
+            <label>
+              <span>Make *</span>
+              <input type="text" name="make_name" value="{{ form_data.make_name if form_data else (car.make if car else '') }}" required>
+            </label>
+            <label>
+              <span>Model *</span>
+              <input type="text" name="model" value="{{ form_data.model if form_data else (car.model if car else '') }}" required>
+            </label>
+            <label>
+              <span>Transmission</span>
+              <select name="transmission">
+                <option value="">Select</option>
+                <option value="Manual" {{ 'selected' if (form_data.transmission if form_data else (car.transmission if car else ''))|lower == 'manual' else '' }}>Manual</option>
+                <option value="Automatic" {{ 'selected' if (form_data.transmission if form_data else (car.transmission if car else ''))|lower == 'automatic' else '' }}>Automatic</option>
+              </select>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Pricing and status</legend>
+          <div class="form-grid three">
+            <label>
+              <span>Price</span>
+              <input type="text" name="price" value="{{ form_data.price if form_data else (car.price if car else '') }}">
+            </label>
+            <label>
+              <span>Mileage</span>
+              <input type="text" name="mileage" value="{{ form_data.mileage if form_data else (car.mileage if car else '') }}">
+            </label>
+            <label>
+              <span>Status</span>
+              <select name="auction_status">
+                {% set current_status = (form_data.auction_status if form_data else (car.auction_status if car else 'LIVE')) %}
+                {% for value, label in status_choices %}
+                  <option value="{{ value }}" {{ 'selected' if current_status|upper == value else '' }}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Dealership</legend>
+          <label>
+            <span>Dealership</span>
+            <select name="dealership_id">
+              {% for dealer in dealerships %}
+                <option value="{{ dealer.id }}" {{ 'selected' if (form_data.dealership_id if form_data else (car.dealership_id if car else ''))|string == dealer.id|string else '' }}>{{ dealer.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            <span>Location</span>
+            <input type="text" name="location_address" value="{{ form_data.location_address if form_data else (car.location_address if car else '') }}" placeholder="City, ST">
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Media</legend>
+          <label>
+            <span>Image URL</span>
+            <input type="url" name="image_url" value="{{ form_data.image_url if form_data else (car.image_url if car else '') }}">
+          </label>
+          <label>
+            <span>Upload image</span>
+            <input type="file" name="image_file" accept="image/*">
+          </label>
+        </fieldset>
+
+        <label>
+          <span>Description</span>
+          <textarea name="description" rows="5">{{ form_data.description if form_data else (car.description if car else '') }}</textarea>
+        </label>
+
+        <div class="form-actions inline-start">
+          <button type="submit" class="button primary">{{ "Save changes" if car else "Create listing" }}</button>
+          <a class="button" href="{{ portal_base }}">Back to dashboard</a>
+        </div>
+      </form>
+    </div>
+  </article>
+</section>
+{% endblock %}

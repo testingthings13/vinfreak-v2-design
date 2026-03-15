@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ title or "Dealer Signup" }}</title>
+  <link rel="stylesheet" href="/static/admin.css">
+</head>
+<body class="login-shell">
+  <article class="card-panel login-panel">
+    <div class="brand-mark">
+      <div class="brand-mark__logo">VF</div>
+      <div>
+        <h1>Dealer application</h1>
+        <p class="muted">Tell us about your dealership and we will approve quickly.</p>
+      </div>
+    </div>
+    {% if errors %}
+      <div class="flash error">
+        <ul>
+        {% for err in errors %}
+          <li>{{ err }}</li>
+        {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+    <form class="form elevated" method="post" action="{{ portal_base }}/signup">
+      <input type="hidden" name="csrf" value="{{ csrf_token(request) }}"/>
+      <label>
+        <span>Dealership name</span>
+        <input name="dealership_name" type="text" required value="{{ form_data.dealership_name if form_data else '' }}">
+      </label>
+      <label>
+        <span>Login email</span>
+        <input name="email" type="email" required value="{{ form_data.email if form_data else '' }}">
+      </label>
+      <label>
+        <span>Contact email</span>
+        <input name="contact_email" type="email" value="{{ form_data.contact_email if form_data else '' }}">
+      </label>
+      <label>
+        <span>Phone</span>
+        <input name="phone" type="text" value="{{ form_data.phone if form_data else '' }}">
+      </label>
+      <label>
+        <span>Website</span>
+        <input name="website" type="url" placeholder="https://" value="{{ form_data.website if form_data else '' }}">
+      </label>
+      <label>
+        <span>Location</span>
+        <input name="location" type="text" placeholder="City, ST" value="{{ form_data.location if form_data else '' }}">
+      </label>
+      <label>
+        <span>Already listed on VINFREAK?</span>
+        <select name="requested_dealership_id">
+          <option value="">No, this is a new dealership</option>
+          {% for d in dealerships %}
+            <option value="{{ d.id }}" {{ 'selected' if form_data and form_data.requested_dealership_id|default('')|string == d.id|string else '' }}>{{ d.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        <span>Password</span>
+        <input name="password" type="password" autocomplete="new-password" required>
+      </label>
+      <label>
+        <span>Confirm password</span>
+        <input name="password_confirm" type="password" autocomplete="new-password" required>
+      </label>
+      <div class="form-actions">
+        <button class="button primary" type="submit">Submit application</button>
+        <a class="button" href="{{ portal_base }}/login">Back to login</a>
+      </div>
+    </form>
+  </article>
+</body>
+</html>

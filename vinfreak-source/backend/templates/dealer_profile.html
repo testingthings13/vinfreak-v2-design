@@ -1,0 +1,90 @@
+{% extends "dealer_base.html" %}
+{% block content %}
+<section class="page-header">
+  <div>
+    <h1>Dealer profile</h1>
+    <p class="muted">Keep your dealership information current and verified.</p>
+  </div>
+</section>
+
+{% if errors %}
+  <div class="flash error">
+    <ul>
+    {% for err in errors %}
+      <li>{{ err }}</li>
+    {% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Account details</h2>
+        <p class="muted small">Visible to VINFREAK operations only.</p>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      <form class="form elevated" method="post" action="{{ portal_base }}/profile" enctype="multipart/form-data">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <div class="form-grid two">
+          <label>
+            <span>Display name</span>
+            <input type="text" name="display_name" value="{{ profile.display_name or '' }}">
+          </label>
+          <label>
+            <span>Contact email</span>
+            <input type="email" name="contact_email" value="{{ profile.contact_email or '' }}">
+          </label>
+          <label>
+            <span>Phone</span>
+            <input type="text" name="phone" value="{{ profile.phone or '' }}">
+          </label>
+          <label>
+            <span>Website</span>
+            <input type="url" name="website" value="{{ profile.website or '' }}">
+          </label>
+          <label>
+            <span>Location</span>
+            <input type="text" name="location" value="{{ profile.location or '' }}">
+          </label>
+          <label>
+            <span>Status</span>
+            <input type="text" value="{{ profile.status or '' }}" disabled>
+          </label>
+        </div>
+
+        <fieldset>
+          <legend>Dealership branding</legend>
+          <label>
+            <span>Dealership</span>
+            <select name="dealership_id">
+              {% for dealer in dealerships %}
+                <option value="{{ dealer.id }}" {{ 'selected' if selected_dealership and dealer.id == selected_dealership.id else '' }}>{{ dealer.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            <span>Dealership name</span>
+            <input type="text" name="dealership_name" value="{{ selected_dealership.name if selected_dealership else '' }}">
+          </label>
+          <label>
+            <span>Dealership location</span>
+            <input type="text" name="dealership_location" value="{{ selected_dealership.location if selected_dealership else '' }}">
+          </label>
+          <label>
+            <span>Logo</span>
+            <input type="file" name="logo" accept="image/*">
+          </label>
+        </fieldset>
+
+        <div class="form-actions inline-start">
+          <button type="submit" class="button primary">Save profile</button>
+          <a class="button" href="{{ portal_base }}">Back to dashboard</a>
+        </div>
+      </form>
+    </div>
+  </article>
+</section>
+{% endblock %}

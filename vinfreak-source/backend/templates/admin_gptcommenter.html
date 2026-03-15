@@ -1,0 +1,253 @@
+{% extends "_base.html" %}
+{% block content %}
+<section class="page-header">
+  <div>
+    <h1>GPTCommenter</h1>
+    <p class="muted">Guide Grok-powered community replies without overwhelming the conversation.</p>
+  </div>
+</section>
+
+{% if form_errors %}
+  <div class="callout error">
+    <h3>We need a quick fix</h3>
+    <ul>
+      {% for err in form_errors %}<li>{{ err }}</li>{% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Configure GPTCommenter</h2>
+        <p class="muted small">Set the tone, choose which listings to target and decide how many automated replies should appear.</p>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      <form method="post" action="/admin/gptcommenter/run" class="form gptcommenter-form">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label class="gptcommenter-form__prompt">
+          <span>Grok prompt</span>
+          <textarea name="gpt_prompt" rows="6" placeholder="Share any extra instructions for GPTCommenter">{{ form_data.prompt }}</textarea>
+          <small class="field-hint">This text is passed to Grok alongside the listing details. Leave blank to use the default style.</small>
+        </label>
+        <fieldset class="gptcommenter-form__statuses">
+          <legend>Listing statuses to target</legend>
+          <small class="field-hint">GPTCommenter currently supports Active listings and Auctions in progress.</small>
+          <div class="checkbox-grid">
+            {% if status_options %}
+              {% for option in status_options %}
+                <label class="checkbox">
+                  <input type="checkbox" name="statuses" value="{{ option.value }}" {% if option.selected %}checked{% endif %}>
+                  <span>{{ option.label }}{% if option.count %}<small class="muted"> · {{ option.count }} GPT comments</small>{% endif %}</span>
+                </label>
+              {% endfor %}
+            {% else %}
+              <p class="muted small">No listing statuses detected yet. Add a few cars to enable GPTCommenter.</p>
+            {% endif %}
+          </div>
+          {% if status_guides %}
+          <details class="field-hint-block">
+            <summary class="muted small">Need a refresher on each status?</summary>
+            <ul class="gptcommenter-form__status-guide">
+              {% for guide in status_guides %}
+                <li><strong>{{ guide.label }}</strong><span class="muted small"> — {{ guide.description }}</span></li>
+              {% endfor %}
+            </ul>
+          </details>
+          {% endif %}
+        </fieldset>
+        <div class="gptcommenter-form__controls">
+          <label>
+            <span>Initial moderation state</span>
+            <select name="initial_status">
+              <option value="pending" {% if form_data.initial_status == 'pending' %}selected{% endif %}>Hold for review</option>
+              <option value="approved" {% if form_data.initial_status == 'approved' %}selected{% endif %}>Publish immediately</option>
+            </select>
+          </label>
+          <label>
+            <span>Max GPT comments per listing</span>
+            <input type="number" name="max_per_listing" min="1" max="5" value="{{ form_data.max_per_listing }}">
+          </label>
+          <label>
+            <span>Max comments per run</span>
+            <input type="number" name="max_per_run" min="1" max="300" value="{{ form_data.max_per_run }}">
+          </label>
+          <label>
+            <span>Preview listing ID</span>
+            <input type="number" name="preview_car_id" placeholder="Optional" value="{{ form_data.preview_car_id }}">
+            <small class="field-hint">Leave blank to preview the newest eligible listing.</small>
+          </label>
+          <label class="full-width">
+            <span>Specific listing IDs to include</span>
+            <textarea name="target_car_ids" rows="3" placeholder="Optional">{{ form_data.target_car_ids_text }}</textarea>
+            <small class="field-hint">Comma- or newline-separated listing IDs. Leave blank to include all matching listings.</small>
+          </label>
+        </div>
+        <div class="form-actions gptcommenter-form__actions">
+          <button type="submit" class="button" formaction="/admin/gptcommenter/settings">Save settings</button>
+          <button type="submit" class="button ghost" formaction="/admin/gptcommenter/preview">Preview run</button>
+          <button type="submit" class="button primary">Start GPTCommenter</button>
+        </div>
+      </form>
+    </div>
+  </article>
+</section>
+
+{% if preview %}
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Preview</h2>
+        <p class="muted small">This is how GPTCommenter will respond before anything is published.</p>
+      </div>
+    </header>
+    <div class="card-panel__body gptcommenter-preview">
+      <div class="gptcommenter-preview__meta">
+        <strong>Listing</strong>
+        {% if preview.car_url %}
+          <a href="{{ preview.car_url }}" target="_blank" rel="noopener">{{ preview.car_title or ('Listing #' ~ preview.car_id) }}</a>
+        {% elif preview.car_id %}
+          <a href="/car/{{ preview.car_id }}" target="_blank" rel="noopener">{{ preview.car_title or ('Listing #' ~ preview.car_id) }}</a>
+        {% else %}
+          <span>{{ preview.car_title or 'Unknown listing' }}</span>
+        {% endif %}
+        <span class="muted small">Status: {{ status_label(preview.car_status) }}</span>
+      </div>
+      <div class="gptcommenter-preview__comment">
+        <h3>Generated comment</h3>
+        <blockquote>{{ preview.comment | e | replace('\n', '<br>') | safe }}</blockquote>
+      </div>
+      <details class="gptcommenter-preview__prompt">
+        <summary>Show prompt sent to Grok</summary>
+        <pre>{{ preview.prompt }}</pre>
+      </details>
+    </div>
+  </article>
+</section>
+{% endif %}
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Comment hygiene</h2>
+        <p class="muted small">Keep the automated chatter in check by pruning older replies.</p>
+      </div>
+    </header>
+    <div class="card-panel__body gptcommenter-cleanup">
+      <div class="gptcommenter-cleanup__summary">
+        <p><strong>{{ gpt_comment_total }}</strong> GPTCommenter responses live on the site.</p>
+        {% if gpt_comment_counts %}
+        <ul>
+          {% for option in status_options if option.count %}
+            <li><span>{{ option.label }}</span><strong>{{ option.count }}</strong></li>
+          {% endfor %}
+        </ul>
+        {% else %}
+          <p class="muted small">No automated comments yet.</p>
+        {% endif %}
+      </div>
+      <form method="post" action="/admin/gptcommenter/delete" class="form gptcommenter-cleanup__form">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label>
+          <span>Delete scope</span>
+          <select name="delete_scope">
+            <option value="all">All GPTCommenter comments</option>
+            <option value="status">Only the selected statuses</option>
+            <option value="car_ids">Only the listed IDs</option>
+          </select>
+        </label>
+        <fieldset>
+          <legend>Status filters</legend>
+          {% if delete_status_options %}
+          <div class="checkbox-grid">
+            {% for option in delete_status_options %}
+              <label class="checkbox">
+                <input type="checkbox" name="delete_statuses" value="{{ option.value }}">
+                <span>{{ option.label }} <small class="muted">({{ option.count }})</small></span>
+              </label>
+            {% endfor %}
+          </div>
+          {% else %}
+            <p class="muted small">No GPTCommenter comments to filter by status yet.</p>
+          {% endif %}
+        </fieldset>
+        <label>
+          <span>Listing IDs to delete</span>
+          <textarea name="delete_car_ids" rows="3" placeholder="Optional"></textarea>
+          <small class="field-hint">Comma- or newline-separated listing IDs. Leave blank to ignore.</small>
+        </label>
+        <div class="form-actions inline-start">
+          <button type="submit" class="button danger">Delete GPT comments</button>
+        </div>
+      </form>
+    </div>
+  </article>
+</section>
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Review &amp; edit GPT comments</h2>
+        <p class="muted small">Tweak the latest automated replies without leaving GPTCommenter.</p>
+      </div>
+    </header>
+    <div class="card-panel__body gptcommenter-editor">
+      {% if recent_comments %}
+        {% for item in recent_comments %}
+          <article class="gptcommenter-editor__item">
+            <header class="gptcommenter-editor__meta">
+              <div class="gptcommenter-editor__title">
+                <strong>#{{ item.id }}</strong>
+                {% if item.car_url %}
+                  <a href="{{ item.car_url }}" target="_blank" rel="noopener">{{ item.car_title or ('Listing #' ~ item.car_id) }}</a>
+                {% elif item.car_id %}
+                  <a href="/car/{{ item.car_id }}" target="_blank" rel="noopener">{{ item.car_title or ('Listing #' ~ item.car_id) }}</a>
+                {% else %}
+                  <span>{{ item.car_title or 'Unknown listing' }}</span>
+                {% endif %}
+              </div>
+              <div class="muted small gptcommenter-editor__details">
+                <span>Status: {{ status_label(item.car_status) }}</span>
+                <span>· Moderation: {{ item.status|capitalize }}</span>
+                <span>· {{ item.created_label }}</span>
+                {% if item.flagged %}<span class="badge warning">Flagged</span>{% endif %}
+              </div>
+            </header>
+            <form method="post" action="/admin/comments/{{ item.id }}/moderate" class="gptcommenter-editor__form">
+              <input type="hidden" name="csrf" value="{{ csrf }}">
+              <input type="hidden" name="view" value="flagged">
+              <input type="hidden" name="return_to" value="/admin/gptcommenter">
+              <label>
+                <span class="muted small">Comment</span>
+                <textarea name="body" rows="4">{{ item.body }}</textarea>
+              </label>
+              <label>
+                <span class="muted small">Moderator note</span>
+                <input type="text" name="note" placeholder="Optional note (kept internal)" value="{{ item.flagged_reason or '' }}">
+              </label>
+              <div class="gptcommenter-editor__actions">
+                <button class="button" type="submit" name="action" value="save">Save edits</button>
+                <button class="button" type="submit" name="action" value="approve">Approve</button>
+                <button class="button" type="submit" name="action" value="reject">Reject</button>
+                {% if item.flagged %}
+                  <button class="button" type="submit" name="action" value="unflag">Clear flag</button>
+                {% else %}
+                  <button class="button" type="submit" name="action" value="flag">Flag</button>
+                {% endif %}
+                <button class="button danger" type="submit" name="action" value="delete" onclick="return confirm('Delete this comment?');">Delete</button>
+              </div>
+            </form>
+          </article>
+        {% endfor %}
+      {% else %}
+        <p class="muted">No automated comments yet—fire up GPTCommenter to generate a preview.</p>
+      {% endif %}
+    </div>
+  </article>
+</section>
+{% endblock %}

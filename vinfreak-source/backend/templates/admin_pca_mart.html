@@ -1,0 +1,33 @@
+{% extends "_base.html" %}
+{% block content %}
+<section class="page-header">
+  <div>
+    <h1>PCA Mart Import</h1>
+    <p class="muted">Paste a single PCA listing URL and import it directly into dealership <strong>PCA</strong>.</p>
+  </div>
+</section>
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Import by URL</h2>
+        <p class="muted small">Examples: <code>80636</code> or <code>https://mart.pca.org/ads/80636</code></p>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      <form class="form elevated" method="post" action="/admin/pca-mart">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label>
+          <span>PCA listing URL or ad number</span>
+          <input type="text" name="listing_url" placeholder="80636 or https://mart.pca.org/ads/80636" required>
+        </label>
+        <div class="form-actions inline-start">
+          <button type="submit" class="button primary">Import Listing</button>
+          <a class="button" href="/admin/imports">Back to Import Center</a>
+        </div>
+      </form>
+    </div>
+  </article>
+</section>
+{% endblock %}

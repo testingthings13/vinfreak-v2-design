@@ -1,0 +1,158 @@
+{% extends "_base.html" %}
+{% block content %}
+<section class="page-header">
+  <div>
+    <h1>Manual listing entry</h1>
+    <p class="muted">Quickly stage inventory for boutique dealers without waiting on integrations.</p>
+  </div>
+</section>
+
+{% if errors %}
+  <div class="flash error">
+    <ul>
+    {% for err in errors %}
+      <li>{{ err }}</li>
+    {% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Listing blueprint</h2>
+        <p class="muted small">Provide the essentials—we’ll normalize it for the consumer experience.</p>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      <form class="form elevated" method="post" action="/admin/cars/manual" enctype="multipart/form-data">
+        <input type="hidden" name="csrf" value="{{ csrf_token(request) }}">
+
+        <fieldset>
+          <legend>Listing details</legend>
+          <label>
+            <span>Main image *</span>
+            <input type="file" name="cover_photo" accept="image/*">
+          </label>
+
+          <label>
+            <span>Listing URL</span>
+            <input type="url" name="listing_url" placeholder="https://" value="{{ form_data.listing_url or '' }}">
+          </label>
+
+          <label>
+            <span>Title *</span>
+            <input type="text" name="title" required value="{{ form_data.title or '' }}">
+          </label>
+
+          <div class="form-grid three">
+            <label>
+              <span>Price</span>
+              <input type="text" name="price" placeholder="55000" value="{{ form_data.price or '' }}">
+            </label>
+            <label>
+              <span>Mileage</span>
+              <input type="text" name="mileage" placeholder="12000" value="{{ form_data.mileage or '' }}">
+            </label>
+            <label>
+              <span>Year *</span>
+              <input type="text" name="year" placeholder="2021" value="{{ form_data.year or '' }}" required>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Vehicle specifics</legend>
+          <div class="form-grid three">
+            <label>
+              <span>VIN *</span>
+              <input type="text" name="vin" value="{{ form_data.vin or '' }}" placeholder="1HGBH41JXMN109186" required>
+            </label>
+            <label>
+              <span>Make *</span>
+              <input list="make_list" name="make_name" value="{{ form_data.make_name or '' }}" placeholder="Porsche" required>
+              <datalist id="make_list">
+                {% for make in makes %}
+                  <option value="{{ make.name }}"></option>
+                {% endfor %}
+              </datalist>
+            </label>
+            <label>
+              <span>Model *</span>
+              <input type="text" name="model" value="{{ form_data.model or '' }}" placeholder="911 Carrera" required>
+            </label>
+          </div>
+
+          <div class="form-grid two">
+            <label>
+              <span>Transmission</span>
+              <select name="transmission">
+                <option value="">Select…</option>
+                <option value="Manual" {{ 'selected' if form_data.transmission|default('')|lower == 'manual' else '' }}>Manual</option>
+                <option value="Automatic" {{ 'selected' if form_data.transmission|default('')|lower == 'automatic' else '' }}>Automatic</option>
+              </select>
+            </label>
+            <label>
+              <span>Status *</span>
+              <select name="status" required>
+                {% for value, label in status_choices %}
+                  <option value="{{ value }}" {{ 'selected' if form_data.status|default('') == value else '' }}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Location &amp; dealership</legend>
+          <label>
+            <span>Dealership *</span>
+            <select name="dealership_id" id="dealership_id" required>
+              <option value="">Select a dealership…</option>
+              {% for dealer in dealerships %}
+                <option value="{{ dealer.id }}" data-address="{{ dealer.location or '' }}" {{ 'selected' if form_data.dealership_id|default('')|int == dealer.id else '' }}>{{ dealer.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+
+          <label>
+            <span>Location address</span>
+            <input type="text" name="location_address" id="location_address" placeholder="Austin, TX" value="{{ form_data.location_address or '' }}">
+            <small class="muted">If left blank we&rsquo;ll use the dealership address when available.</small>
+          </label>
+        </fieldset>
+
+        <div class="form-actions inline-start">
+          <button type="submit" class="button primary">Create listing</button>
+          <a class="button" href="/admin/cars">Back to cars</a>
+        </div>
+      </form>
+    </div>
+  </article>
+</section>
+
+<script>
+  (function() {
+    const dealershipSelect = document.getElementById("dealership_id");
+    const locationInput = document.getElementById("location_address");
+    if (!dealershipSelect || !locationInput) return;
+    const fillFromDealer = () => {
+      if (locationInput.value && locationInput.value.trim() !== "") return;
+      const selected = dealershipSelect.options[dealershipSelect.selectedIndex];
+      if (!selected) return;
+      const address = selected.getAttribute("data-address") || "";
+      if (address) {
+        locationInput.value = address;
+      }
+    };
+    dealershipSelect.addEventListener("change", fillFromDealer);
+    locationInput.addEventListener("input", () => {
+      if (!locationInput.value.trim()) {
+        fillFromDealer();
+      }
+    });
+    fillFromDealer();
+  })();
+</script>
+{% endblock %}

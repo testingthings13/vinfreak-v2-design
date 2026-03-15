@@ -1,0 +1,103 @@
+<!doctype html>
+<html data-theme="{{ (settings.get('theme') if settings else '') or 'dark' }}">
+<head>
+  <meta charset="utf-8"/>
+  <title>{{ title or "Admin" }}</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  {% if settings and settings.get('favicon_url') %}
+  <link rel="icon" href="{{ settings.get('favicon_url') }}"/>
+  {% endif %}
+  <link href="/static/admin.css" rel="stylesheet"/>
+  <script>
+  // keyboard shortcuts: s=submit, /=focus search
+  document.addEventListener('keydown', (e)=>{
+    const tag = (e.target && e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea') return;
+    if (e.key === '/') { const s = document.querySelector('input[name="q"]'); if (s){ e.preventDefault(); s.focus(); } }
+  });
+  </script>
+</head>
+<body>
+  {% set perms = request.session.get('permissions') or [] %}
+  {% set is_super = request.session.get('is_superadmin') %}
+  <div class="admin-shell">
+    <aside class="topbar sticky admin-sidebar">
+      <div class="brand">
+        <a href="/admin">FreakOps</a>
+      </div>
+      <nav class="admin-nav" aria-label="Admin Navigation">
+        <a href="/admin">FreakOps</a>
+        <a href="/admin/jobs">Jobs</a>
+        {% if is_super or 'settings' in perms %}<a href="/admin/settings">Settings</a>{% endif %}
+        {% if is_super or 'cars' in perms %}
+        <a href="/admin/cars">Cars</a>
+        {% set flagged_alerts = flagged_car_count() %}
+        <a href="/admin/cars/flagged" class="{% if flagged_alerts %}has-indicator{% endif %}">Flagged Cars{% if flagged_alerts %}<span class="nav-alert">{{ flagged_alerts }}</span>{% endif %}</a>
+        <a href="/admin/cars/new">Add Car</a>
+        {% endif %}
+        {% if is_super or 'manual' in perms %}
+        <a href="/admin/cars/manual">Manual Add</a>
+        {% endif %}
+        {% if is_super or 'comments' in perms %}
+        {% set comment_alerts = comment_alert_count() %}
+        <a href="/admin/comments" class="{% if comment_alerts %}has-indicator{% endif %}">Comments{% if comment_alerts %}<span class="nav-alert">{{ comment_alerts }}</span>{% endif %}</a>
+        {% endif %}
+        {% if is_super or 'gptcommenter' in perms %}<a href="/admin/gptcommenter">GPTCommenter</a>{% endif %}
+        {% if is_super or 'car_logos' in perms %}<a href="/admin/car-logos">Car Logos</a>{% endif %}
+        {% if is_super or 'dealerships' in perms %}<a href="/admin/dealerships">Dealerships</a>{% endif %}
+        {% if is_super or 'dealerships' in perms %}<a href="/admin/dealers">Dealer Profiles</a>{% endif %}
+        {% if is_super or 'imports' in perms %}<a href="/admin/imports">Car Imports</a>{% endif %}
+        {% if is_super or 'imports' in perms %}<a href="/admin/facebook-marketplace">Facebook Marketplace</a>{% endif %}
+        {% if is_super or 'imports' in perms %}<a href="/admin/pca-mart">PCA Mart</a>{% endif %}
+        {% if is_super or 'freakstats' in perms %}<a href="/admin/freakstats">FreakGPT</a>{% endif %}
+        {% if is_super or 'freakestimate' in perms %}<a href="/admin/freakestimate">What's my car worth?</a>{% endif %}
+        {% if is_super or 'neuroai' in perms %}<a href="/admin/neuroai">NeuroAI</a>{% endif %}
+        {% if is_super or 'neurowraith' in perms %}<a href="/admin/neurowraith">NeuroWraith</a>{% endif %}
+        {% if is_super %}
+        <a href="/admin/agents">Agents</a>
+        {% endif %}
+        <a href="/admin/logout">Logout</a>
+      </nav>
+    </aside>
+
+    <div class="admin-content">
+      {% if flash and flash|length %}
+        <div class="flash-wrap">
+          {% for f in flash %}
+            <div class="flash {{ f.cat }}">{{ f.msg }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      <main class="page{% if page_class %} {{ page_class }}{% endif %}">
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+  </div>
+  <script>
+  (function () {
+    var nav = document.querySelector('.admin-nav');
+    if (!nav) return;
+    var path = window.location.pathname || '';
+    var best = null;
+    var bestLen = 0;
+    nav.querySelectorAll('a[href^="/admin"]').forEach(function (link) {
+      var href = link.getAttribute('href') || '';
+      if (!href || href === '/admin/logout') return;
+      if (path === href || (href !== '/admin' && path.indexOf(href) === 0)) {
+        if (href.length > bestLen) {
+          best = link;
+          bestLen = href.length;
+        }
+      }
+    });
+    if (!best) {
+      best = nav.querySelector('a[href="/admin"]');
+    }
+    if (best) {
+      best.classList.add('is-active');
+    }
+  })();
+  </script>
+</body>
+</html>

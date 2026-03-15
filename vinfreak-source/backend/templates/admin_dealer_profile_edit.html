@@ -1,0 +1,83 @@
+{% extends "_base.html" %}
+{% block content %}
+<section class="page-header">
+  <div>
+    <h1>Dealer Profile</h1>
+    <p class="muted">Approve, reject, or assign a dealership.</p>
+  </div>
+</section>
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>{{ profile.display_name or "Dealer profile" }}</h2>
+        <p class="muted small">Owner: {{ owner.email if owner else "n/a" }}</p>
+      </div>
+      <span class="tag">{{ profile.status or "pending" }}</span>
+    </header>
+    <div class="card-panel__body">
+      <form class="form elevated" method="post" action="/admin/dealers/{{ profile.id }}" enctype="multipart/form-data">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+
+        <fieldset>
+          <legend>Profile details</legend>
+          <div class="form-grid two">
+            <label><span>Display name</span><input type="text" name="display_name" value="{{ profile.display_name or '' }}"></label>
+            <label><span>Contact email</span><input type="email" name="contact_email" value="{{ profile.contact_email or '' }}"></label>
+            <label><span>Phone</span><input type="text" name="phone" value="{{ profile.phone or '' }}"></label>
+            <label><span>Website</span><input type="url" name="website" value="{{ profile.website or '' }}"></label>
+            <label><span>Location</span><input type="text" name="location" value="{{ profile.location or '' }}"></label>
+            <label>
+              <span>Status</span>
+              <select name="status">
+                {% for value, label in status_choices %}
+                  <option value="{{ value }}" {{ 'selected' if profile.status == value else '' }}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Dealership assignment</legend>
+          {% if requested %}
+            <p class="muted small">Requested: {{ requested.name }} (ID {{ requested.id }})</p>
+          {% elif profile.requested_dealership_id %}
+            <p class="muted small">Requested dealership ID: {{ profile.requested_dealership_id }}</p>
+          {% endif %}
+          {% if assigned %}
+            <p class="muted small">Currently assigned: {{ assigned.name }} (ID {{ assigned.id }})</p>
+          {% endif %}
+          <label>
+            <span>Assign existing dealership</span>
+            <select name="dealership_id">
+              <option value="">No change</option>
+              {% for dealer in dealerships %}
+                <option value="{{ dealer.id }}" {{ 'selected' if assigned and dealer.id == assigned.id else '' }}>{{ dealer.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            <span>Create new dealership</span>
+            <input type="text" name="new_dealership_name" placeholder="New dealership name">
+          </label>
+          <label>
+            <span>New dealership location</span>
+            <input type="text" name="new_dealership_location" placeholder="City, ST">
+          </label>
+          <label>
+            <span>New dealership logo</span>
+            <input type="file" name="new_dealership_logo" accept="image/*">
+          </label>
+        </fieldset>
+
+        <div class="form-actions">
+          <button type="submit" class="button primary">Save changes</button>
+          <a class="button" href="/admin/dealers">Back to list</a>
+        </div>
+      </form>
+    </div>
+  </article>
+</section>
+{% endblock %}

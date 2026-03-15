@@ -1,0 +1,852 @@
+{% extends "_base.html" %}
+{% block content %}
+<section class="page-header">
+  <div>
+    <h1>NeuroAI batch assistant</h1>
+    <p class="muted">Fetch multiple listings, review Grok results, and publish the ones you want.</p>
+  </div>
+</section>
+
+<section class="admin-section">
+  <div class="neuroai-agent-grid">
+    {% if current_user and not current_user.is_superuser %}
+    <article class="card-panel neuroai-agent-card" data-neuroai-agent-guide>
+      <header class="neuroai-agent-card__header">
+        <div>
+          <p class="neuroai-agent-card__eyebrow">Agent onboarding</p>
+          <h2>Welcome “{{ current_user.username }}”</h2>
+        </div>
+        <button
+          type="button"
+          class="neuroai-agent-card__close"
+          data-neuroai-agent-close
+          aria-label="Dismiss NeuroAI instructions"
+        >
+          &times;
+        </button>
+      </header>
+      <div class="neuroai-agent-card__body">
+        <p class="neuroai-agent-card__intro">
+          Here’s a quick refresher on how to run NeuroAI batches. This guide reappears each time you land here so nothing gets missed.
+        </p>
+        <ol class="neuroai-agent-card__steps">
+          <li><strong>Gather listings.</strong> Paste one URL per line in the field on the right.</li>
+          <li><strong>Assign a destination.</strong> Pick an existing dealership or add a new one before fetching.</li>
+          <li><strong>Review the output.</strong> NeuroAI highlights ready listings first. Uncheck anything that needs manual work.</li>
+          <li><strong>Publish with confidence.</strong> Confirm the details, then submit to send selected listings live.</li>
+        </ol>
+        <p class="neuroai-agent-card__hint">Need help? Ping a super admin for deeper troubleshooting.</p>
+      </div>
+    </article>
+    {% endif %}
+    <article class="card-panel">
+      <header class="card-panel__header">
+        <div>
+          <h2>Fetch listings with Grok</h2>
+        <p class="muted small">The assistant uses the grok-4-fast-reasoning model and always responds in JSON mode.</p>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      <form
+        method="post"
+        action="/admin/neuroai/fetch"
+        class="form elevated"
+        novalidate
+        enctype="multipart/form-data"
+        data-neuroai-fetch-form
+        data-add-dealership-url="/admin/neuroai/dealerships"
+      >
+        <input type="hidden" name="csrf" value="{{ csrf_token(request) }}">
+        <label>
+          <span>Listing URLs</span>
+          <textarea name="urls" rows="6" placeholder="https://example.com/listing-one
+https://example.com/listing-two">{{ urls_value }}</textarea>
+          <small class="field-hint">Enter one URL per line. We'll dedupe image hints before prompting Grok.</small>
+        </label>
+        <label>
+          <span>Assign listings to</span>
+          <select
+            name="dealership_id"
+            data-neuroai-dealership-select="id"
+            data-placeholder="Assign to dealership"
+            data-neuroai-adopt-new="true"
+          >
+            <option value="">Assign to dealership</option>
+            {% for dealer in manual_dealerships %}
+            <option value="{{ dealer.id }}" {% if selected_dealership_id and selected_dealership_id == dealer.id %}selected{% endif %}>
+              {{ dealer.name }}{% if dealer.location %} &mdash; {{ dealer.location }}{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+        </label>
+        <fieldset class="neuroai-add-dealer">
+          <legend>Dealership not found? Add it below.</legend>
+          <div class="neuroai-add-dealer__grid">
+            <label>
+              <span>Dealership name</span>
+              <input type="text" name="new_dealership_name" value="{{ new_dealership_name }}" autocomplete="off" placeholder="Enter dealership name">
+            </label>
+            <label>
+              <span>Location (optional)</span>
+              <input type="text" name="new_dealership_location" value="{{ new_dealership_location }}" autocomplete="off" placeholder="City, ST">
+            </label>
+            <label>
+              <span>Logo (optional)</span>
+              <input type="file" name="new_dealership_logo" accept="image/*">
+            </label>
+          </div>
+          <div class="neuroai-add-dealer__actions">
+            <button type="button" class="button" data-neuroai-add-dealership>Add dealership</button>
+            <p class="neuroai-add-status muted small" data-neuroai-add-status role="status" aria-live="polite"></p>
+          </div>
+        </fieldset>
+        <div class="form-actions">
+          <button type="submit" class="button primary" name="intent" value="fetch">Fetch &amp; preview</button>
+          <div
+            class="neuroai-fetch-status"
+            data-fetch-status
+            role="status"
+            aria-live="polite"
+            hidden
+          >
+            <span class="neuroai-spinner" aria-hidden="true"></span>
+            <span>Fetching listings…</span>
+          </div>
+        </div>
+      </form>
+    </div>
+    </article>
+  </div>
+</section>
+
+{% if preview_results %}
+{% set ready_results = preview_results | rejectattr('error') | list %}
+{% set error_results = preview_results | selectattr('error') | list %}
+{% set has_errors = error_results | length %}
+{% set has_ready = ready_results | length %}
+{% set default_tab = 'errors' if (has_errors and not has_ready) else 'ready' %}
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Preview &amp; approve</h2>
+        <p class="muted small">Review each normalised record. Uncheck any you do not want to import.</p>
+      </div>
+      <div class="muted small">
+        {{ ready_results|length }} ready listing{{ '' if ready_results|length == 1 else 's' }}
+        {% if error_results|length %}
+        &middot;
+        <span class="neuroai-error-count">{{ error_results|length }} {{ 'needs' if error_results|length == 1 else 'need' }} manual entry</span>
+        {% endif %}
+      </div>
+    </header>
+    <div class="card-panel__body">
+      <form method="post" action="/admin/neuroai/import" class="form" novalidate>
+        <input type="hidden" name="csrf" value="{{ csrf_token(request) }}">
+        <textarea name="records_json" hidden>{{ preview_records_json }}</textarea>
+        <div
+          class="neuroai-tabs"
+          data-neuroai-tabs
+          data-default-tab="{{ default_tab }}"
+        >
+          <div class="neuroai-tablist" role="tablist">
+            {% if ready_results|length %}
+            <button
+              type="button"
+              role="tab"
+              class="neuroai-tab-button"
+              data-tab-button="ready"
+              aria-controls="neuroai-tab-ready"
+            >
+              Ready
+              <span class="neuroai-tab-count">{{ ready_results|length }}</span>
+            </button>
+            {% endif %}
+            {% if error_results|length %}
+            <button
+              type="button"
+              role="tab"
+              class="neuroai-tab-button neuroai-tab-button--error"
+              data-tab-button="errors"
+              aria-controls="neuroai-tab-errors"
+            >
+              Error
+              <span class="neuroai-tab-count">{{ error_results|length }}</span>
+            </button>
+            {% endif %}
+          </div>
+          <div class="neuroai-tab-panels">
+            {% if ready_results|length %}
+            <div
+              id="neuroai-tab-ready"
+              class="neuroai-tab-panel"
+              role="tabpanel"
+              data-tab-panel="ready"
+            >
+              <div class="neuroai-results">
+                {% for item in ready_results %}
+                <article class="neuroai-result">
+                  <header class="neuroai-result__header">
+                    <label class="neuroai-result__selector">
+                      {% set is_checked = item.index in selected_indexes %}
+                      <input type="checkbox" name="record_indexes" value="{{ item.index }}" {% if is_checked %}checked{% endif %}>
+                      <span class="checkbox"></span>
+                    </label>
+                    <div>
+                      <h3>{{ item.display_title }}</h3>
+                      <p class="muted small"><a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.source_label }}</a></p>
+                    </div>
+                    <div class="neuroai-result__status">
+                      <span class="badge success">Ready</span>
+                    </div>
+                  </header>
+                  <div class="neuroai-result__grid">
+                    <div class="neuroai-field-grid" role="group" aria-label="Edit core listing fields">
+                      <label class="neuroai-field">
+                        <span class="neuroai-field__label">VIN</span>
+                        <input
+                          type="text"
+                          name="manual_vin_{{ item.index }}"
+                          value="{{ item.normalized.vin or '' }}"
+                          placeholder="WPOZZZ99ZTS392124"
+                          autocomplete="off"
+                        >
+                      </label>
+                      <label class="neuroai-field">
+                        <span class="neuroai-field__label">Year</span>
+                        <input
+                          type="text"
+                          inputmode="numeric"
+                          name="manual_year_{{ item.index }}"
+                          value="{{ item.normalized.year or '' }}"
+                          placeholder="2024"
+                          autocomplete="off"
+                        >
+                      </label>
+                      <label class="neuroai-field">
+                        <span class="neuroai-field__label">Make</span>
+                        <input
+                          type="text"
+                          name="manual_make_{{ item.index }}"
+                          value="{{ item.normalized.make or '' }}"
+                          placeholder="Porsche"
+                          autocomplete="off"
+                        >
+                      </label>
+                      <label class="neuroai-field">
+                        <span class="neuroai-field__label">Model</span>
+                        <input
+                          type="text"
+                          name="manual_model_{{ item.index }}"
+                          value="{{ item.normalized.model or '' }}"
+                          placeholder="911 GT3"
+                          autocomplete="off"
+                        >
+                      </label>
+                      <label class="neuroai-field">
+                        <span class="neuroai-field__label">Price</span>
+                        <input
+                          type="text"
+                          inputmode="decimal"
+                          name="manual_price_{{ item.index }}"
+                          value="{{ item.normalized.price if item.normalized.price is not none else '' }}"
+                          placeholder="229000"
+                          autocomplete="off"
+                        >
+                      </label>
+                      <label class="neuroai-field">
+                        <span class="neuroai-field__label">Mileage</span>
+                        <input
+                          type="text"
+                          inputmode="numeric"
+                          name="manual_mileage_{{ item.index }}"
+                          value="{{ item.normalized.mileage if item.normalized.mileage is not none else '' }}"
+                          placeholder="1250"
+                          autocomplete="off"
+                        >
+                      </label>
+                      <label class="neuroai-field neuroai-field--wide">
+                        <span class="neuroai-field__label">Location</span>
+                        <input
+                          type="text"
+                          name="manual_location_{{ item.index }}"
+                          value="{{ item.normalized.location_address or item.normalized.location or '' }}"
+                          placeholder="City, ST"
+                          autocomplete="off"
+                        >
+                      </label>
+                      <label class="neuroai-field">
+                        <span class="neuroai-field__label">Source</span>
+                        <input
+                          type="text"
+                          name="manual_source_{{ item.index }}"
+                          value="{{ item.normalized.source or item.normalized.source_url or item.url }}"
+                          placeholder="dealerslug"
+                          autocomplete="off"
+                        >
+                      </label>
+                    </div>
+                    <div class="neuroai-result__highlights">
+                      {% if item.normalized.highlights %}
+                      <h4>Highlights</h4>
+                      <ul>
+                        {% for bullet in item.normalized.highlights %}
+                        <li>{{ bullet }}</li>
+                        {% endfor %}
+                      </ul>
+                      {% endif %}
+                    </div>
+                    {% if item.image_urls %}
+                    <div class="neuroai-result__images" role="group" aria-label="Select the primary image">
+                      {% for image in item.image_urls %}
+                      <label class="neuroai-result__image-option">
+                        <input type="radio" name="primary_image_{{ item.index }}" value="{{ image }}" {% if item.selected_image and image == item.selected_image %}checked{% elif not item.selected_image and loop.first %}checked{% endif %}>
+                        <img src="{{ image }}" alt="Preview image" loading="lazy">
+                      </label>
+                      {% endfor %}
+                    </div>
+                    {% endif %}
+                  </div>
+                  <details class="neuroai-result__editor" {% if item.parse_error %}open{% endif %}>
+                    <summary>Edit listing data before import</summary>
+                    <p class="muted small">Adjust any fields below. Provide a valid JSON object that matches the import schema.</p>
+                    <textarea name="record_json_{{ item.index }}" rows="14">{{ item.record_json }}</textarea>
+                    {% if item.parse_error %}
+                    <p class="form-error">{{ item.parse_error }}</p>
+                    {% endif %}
+                  </details>
+                  <details class="neuroai-result__details">
+                    <summary>Show Grok payload</summary>
+                    <pre>{{ item.raw_json }}</pre>
+                  </details>
+                </article>
+                {% endfor %}
+              </div>
+            </div>
+            {% endif %}
+            {% if error_results|length %}
+            <div
+              id="neuroai-tab-errors"
+              class="neuroai-tab-panel"
+              role="tabpanel"
+              data-tab-panel="errors"
+            >
+              <div class="neuroai-error-summary">
+                <p class="muted">These URLs need manual entry:</p>
+                <ul>
+                  {% for item in error_results %}
+                  <li>
+                    <a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.display_title }}</a>
+                  </li>
+                  {% endfor %}
+                </ul>
+              </div>
+              <div class="neuroai-results">
+                {% for item in error_results %}
+                <article class="neuroai-result">
+                  <header class="neuroai-result__header">
+                    <label class="neuroai-result__selector">
+                      {% set is_checked = item.index in selected_indexes %}
+                      <input type="checkbox" name="record_indexes" value="{{ item.index }}" {% if is_checked %}checked{% endif %}>
+                      <span class="checkbox"></span>
+                    </label>
+                    <div>
+                      <h3>{{ item.display_title }}</h3>
+                      <p class="muted small"><a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.source_label }}</a></p>
+                    </div>
+                    <div class="neuroai-result__status">
+                      {% if item.error %}
+                      <span class="badge error">Failed</span>
+                      {% else %}
+                      <span class="badge success">Ready</span>
+                      {% endif %}
+                    </div>
+                  </header>
+                  {% if item.error %}
+                  <p class="flash error">{{ item.error }}</p>
+                  {% endif %}
+                  <div class="neuroai-result__grid">
+                    <div class="neuroai-field-grid" role="group" aria-label="Edit core listing fields">
+                      <label class="neuroai-field">
+                        <span class="neuroai-field__label">VIN</span>
+                        <input
+                          type="text"
+                          name="manual_vin_{{ item.index }}"
+                          value="{{ item.normalized.vin or '' }}"
+                          placeholder="WPOZZZ99ZTS392124"
+                          autocomplete="off"
+                        >
+                      </label>
+                      <label class="neuroai-field">
+                        <span class="neuroai-field__label">Year</span>
+                        <input
+                          type="text"
+                          inputmode="numeric"
+                          name="manual_year_{{ item.index }}"
+                          value="{{ item.normalized.year or '' }}"
+                          placeholder="2024"
+                          autocomplete="off"
+                        >
+                      </label>
+                      <label class="neuroai-field">
+                        <span class="neuroai-field__label">Make</span>
+                        <input
+                          type="text"
+                          name="manual_make_{{ item.index }}"
+                          value="{{ item.normalized.make or '' }}"
+                          placeholder="Porsche"
+                          autocomplete="off"
+                        >
+                      </label>
+                      <label class="neuroai-field">
+                        <span class="neuroai-field__label">Model</span>
+                        <input
+                          type="text"
+                          name="manual_model_{{ item.index }}"
+                          value="{{ item.normalized.model or '' }}"
+                          placeholder="911 GT3"
+                          autocomplete="off"
+                        >
+                      </label>
+                      <label class="neuroai-field">
+                        <span class="neuroai-field__label">Price</span>
+                        <input
+                          type="text"
+                          inputmode="decimal"
+                          name="manual_price_{{ item.index }}"
+                          value="{{ item.normalized.price if item.normalized.price is not none else '' }}"
+                          placeholder="229000"
+                          autocomplete="off"
+                        >
+                      </label>
+                      <label class="neuroai-field">
+                        <span class="neuroai-field__label">Mileage</span>
+                        <input
+                          type="text"
+                          inputmode="numeric"
+                          name="manual_mileage_{{ item.index }}"
+                          value="{{ item.normalized.mileage if item.normalized.mileage is not none else '' }}"
+                          placeholder="1250"
+                          autocomplete="off"
+                        >
+                      </label>
+                      <label class="neuroai-field neuroai-field--wide">
+                        <span class="neuroai-field__label">Location</span>
+                        <input
+                          type="text"
+                          name="manual_location_{{ item.index }}"
+                          value="{{ item.normalized.location_address or item.normalized.location or '' }}"
+                          placeholder="City, ST"
+                          autocomplete="off"
+                        >
+                      </label>
+                      <label class="neuroai-field">
+                        <span class="neuroai-field__label">Source</span>
+                        <input
+                          type="text"
+                          name="manual_source_{{ item.index }}"
+                          value="{{ item.normalized.source or item.normalized.source_url or item.url }}"
+                          placeholder="dealerslug"
+                          autocomplete="off"
+                        >
+                      </label>
+                    </div>
+                    <div class="neuroai-result__highlights">
+                      {% if item.normalized.highlights %}
+                      <h4>Highlights</h4>
+                      <ul>
+                        {% for bullet in item.normalized.highlights %}
+                        <li>{{ bullet }}</li>
+                        {% endfor %}
+                      </ul>
+                      {% endif %}
+                    </div>
+                    {% if item.image_urls %}
+                    <div class="neuroai-result__images" role="group" aria-label="Select the primary image">
+                      {% for image in item.image_urls %}
+                      <label class="neuroai-result__image-option">
+                        <input type="radio" name="primary_image_{{ item.index }}" value="{{ image }}" {% if item.selected_image and image == item.selected_image %}checked{% elif not item.selected_image and loop.first %}checked{% endif %}>
+                        <img src="{{ image }}" alt="Preview image" loading="lazy">
+                      </label>
+                      {% endfor %}
+                    </div>
+                    {% endif %}
+                  </div>
+                  {% if item.error %}
+                  {% set normalized = item.normalized or {} %}
+                  <div class="neuroai-result__manual">
+                    <h4>Manual entry</h4>
+                    <p class="muted small">NeuroAI returned an error. Provide the essential listing details manually.</p>
+                    <div class="neuroai-field-grid neuroai-field-grid--manual">
+                      <label class="neuroai-field neuroai-field--full">
+                        <span class="neuroai-field__label">Title</span>
+                        <input type="text" name="manual_title_{{ item.index }}" value="{{ normalized.get('title') or item.display_title }}" placeholder="2023 Porsche 911 GT3">
+                      </label>
+                      <label class="neuroai-field neuroai-field--full">
+                        <span class="neuroai-field__label">Cover image URL</span>
+                        <input type="url" name="manual_cover_image_{{ item.index }}" value="{{ item.selected_image or (item.image_urls|first) or '' }}" placeholder="https://example.com/photo.jpg">
+                      </label>
+                      <label class="neuroai-field">
+                        <span class="neuroai-field__label">VIN</span>
+                        <input type="text" name="manual_vin_{{ item.index }}" value="{{ normalized.get('vin') or '' }}" placeholder="WPOZZZ99ZTS392124">
+                      </label>
+                      <label class="neuroai-field">
+                        <span class="neuroai-field__label">Year</span>
+                        <input type="text" name="manual_year_{{ item.index }}" value="{{ normalized.get('year') or '' }}" placeholder="2023">
+                      </label>
+                      <label class="neuroai-field">
+                        <span class="neuroai-field__label">Make</span>
+                        <input type="text" name="manual_make_{{ item.index }}" value="{{ normalized.get('make') or '' }}" placeholder="Porsche">
+                      </label>
+                      <label class="neuroai-field">
+                        <span class="neuroai-field__label">Model</span>
+                        <input type="text" name="manual_model_{{ item.index }}" value="{{ normalized.get('model') or '' }}" placeholder="911 GT3">
+                      </label>
+                      <label class="neuroai-field">
+                        <span class="neuroai-field__label">Price</span>
+                        <input type="text" name="manual_price_{{ item.index }}" value="{{ normalized.get('price') or '' }}" placeholder="$229,000">
+                      </label>
+                      <label class="neuroai-field">
+                        <span class="neuroai-field__label">Mileage</span>
+                        <input type="text" name="manual_mileage_{{ item.index }}" value="{{ normalized.get('mileage') or '' }}" placeholder="1,250">
+                      </label>
+                      <label class="neuroai-field neuroai-field--wide">
+                        <span class="neuroai-field__label">Location</span>
+                        <input type="text" name="manual_location_{{ item.index }}" value="{{ normalized.get('location_address') or normalized.get('location') or '' }}" placeholder="City, ST">
+                      </label>
+                      {% set manual_dealership_hint = normalized.get('dealership') or normalized.get('dealer_name') %}
+                      {% set manual_dealership_id = normalized.get('dealership_id') %}
+                      {% if manual_dealership_id is not none %}
+                        {% set manual_dealership_id = manual_dealership_id | int %}
+                      {% endif %}
+                      <label class="neuroai-field neuroai-field--select">
+                        <span class="neuroai-field__label">Dealership</span>
+                        <select
+                          name="manual_dealership_{{ item.index }}"
+                          data-source-target="manual_source_{{ item.index }}"
+                          data-default-source="{{ normalized.get('source_url') or normalized.get('source') or item.url }}"
+                          data-neuroai-dealership-select="name"
+                          data-placeholder="Select dealership"
+                        >
+                          <option value="">Select dealership</option>
+                          {% for dealer in manual_dealerships %}
+                          {% set option_selected = False %}
+                          {% if manual_dealership_id and manual_dealership_id == dealer.id %}
+                            {% set option_selected = True %}
+                          {% elif manual_dealership_hint and manual_dealership_hint|string|lower == dealer.name|string|lower %}
+                            {% set option_selected = True %}
+                          {% endif %}
+                          <option
+                            value="{{ dealer.name }}"
+                            data-source="{{ dealer.source_slug }}"
+                            {% if option_selected %}selected{% endif %}
+                          >
+                            {{ dealer.name }}{% if dealer.location %} &mdash; {{ dealer.location }}{% endif %}
+                          </option>
+                          {% endfor %}
+                        </select>
+                      </label>
+                      <label class="neuroai-field">
+                        <span class="neuroai-field__label">Source</span>
+                        <input
+                          type="text"
+                          name="manual_source_{{ item.index }}"
+                          value="{{ normalized.get('source') or normalized.get('source_url') or item.url }}"
+                          placeholder="dealerslug"
+                        >
+                      </label>
+                      <label class="neuroai-field neuroai-field--select">
+                        {% set manual_status_value = normalized.get('auction_status') or normalized.get('status') %}
+                        <span class="neuroai-field__label">Auction status</span>
+                        <select name="manual_auction_status_{{ item.index }}">
+                          <option value="">Select status</option>
+                          {% for status in manual_auction_statuses %}
+                          <option value="{{ status }}" {% if manual_status_value and manual_status_value|upper == status %}selected{% endif %}>{{ status }}</option>
+                          {% endfor %}
+                          {% if manual_status_value and manual_status_value|upper not in manual_auction_statuses %}
+                          <option value="{{ manual_status_value }}" selected>{{ manual_status_value }}</option>
+                          {% endif %}
+                        </select>
+                      </label>
+                    </div>
+                  </div>
+                  {% endif %}
+                  <details class="neuroai-result__editor" {% if item.parse_error %}open{% endif %}>
+                    <summary>Edit listing data before import</summary>
+                    <p class="muted small">Adjust any fields below. Provide a valid JSON object that matches the import schema.</p>
+                    <textarea name="record_json_{{ item.index }}" rows="14">{{ item.record_json }}</textarea>
+                    {% if item.parse_error %}
+                    <p class="form-error">{{ item.parse_error }}</p>
+                    {% endif %}
+                  </details>
+                  <details class="neuroai-result__details">
+                    <summary>Show Grok payload</summary>
+                    <pre>{{ item.raw_json }}</pre>
+                  </details>
+                </article>
+                {% endfor %}
+              </div>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+        <div class="form-actions neuroai-import-actions">
+          <label class="neuroai-import-actions__field">
+            <span class="neuroai-import-actions__label">Dealership</span>
+            <select
+              name="import_dealership_id"
+              data-neuroai-dealership-select="id"
+              data-placeholder="Assign to dealership"
+              data-neuroai-adopt-new="true"
+            >
+              <option value="">Assign to dealership</option>
+              {% for dealer in manual_dealerships %}
+              <option value="{{ dealer.id }}" {% if selected_dealership_id and selected_dealership_id == dealer.id %}selected{% endif %}>
+                {{ dealer.name }}{% if dealer.location %} &mdash; {{ dealer.location }}{% endif %}
+              </option>
+              {% endfor %}
+            </select>
+          </label>
+          <button type="submit" class="button primary">Import selected listings</button>
+        </div>
+      </form>
+    </div>
+  </article>
+</section>
+{% endif %}
+
+<script>
+  (function() {
+    const guide = document.querySelector('[data-neuroai-agent-guide]');
+    if (!guide) return;
+    const closeButton = guide.querySelector('[data-neuroai-agent-close]');
+    if (!closeButton) return;
+    closeButton.addEventListener('click', () => {
+      guide.setAttribute('hidden', 'hidden');
+    });
+  })();
+  (function() {
+    const form = document.querySelector('form[action="/admin/neuroai/fetch"]');
+    if (!form) return;
+    const status = form.querySelector('[data-fetch-status]');
+    if (!status) return;
+    const submitButton = form.querySelector('button[type="submit"]');
+    form.addEventListener('submit', () => {
+      status.hidden = false;
+      status.classList.add('is-visible');
+      if (submitButton) {
+        submitButton.setAttribute('aria-busy', 'true');
+        submitButton.disabled = true;
+      }
+    });
+  })();
+  (function() {
+    const selects = document.querySelectorAll('select[data-source-target]');
+    selects.forEach((select) => {
+      const targetName = select.getAttribute('data-source-target');
+      if (!targetName) return;
+      const form = select.closest('form');
+      if (!form) return;
+      const target = form.querySelector(`[name="${targetName}"]`);
+      if (!target) return;
+      const defaultSource = select.getAttribute('data-default-source') || '';
+      const updateSource = () => {
+        let slug = defaultSource;
+        const option = select.options[select.selectedIndex];
+        if (option && option.dataset.source) {
+          const candidate = option.dataset.source.trim();
+          if (candidate) {
+            slug = candidate;
+          }
+        }
+        target.value = slug || '';
+      };
+      select.__neuroaiUpdateSource = updateSource;
+      select.addEventListener('change', updateSource);
+      updateSource();
+    });
+  })();
+  (function() {
+    const form = document.querySelector('[data-neuroai-fetch-form]');
+    if (!form) return;
+    const endpoint = form.getAttribute('data-add-dealership-url');
+    if (!endpoint) return;
+    const addButton = form.querySelector('[data-neuroai-add-dealership]');
+    const status = form.querySelector('[data-neuroai-add-status]');
+    const nameField = form.querySelector('[name="new_dealership_name"]');
+    const locationField = form.querySelector('[name="new_dealership_location"]');
+    const logoField = form.querySelector('[name="new_dealership_logo"]');
+    if (!addButton || !nameField) return;
+
+    const setStatus = (message, tone) => {
+      if (!status) return;
+      status.textContent = message || '';
+      status.classList.remove('is-error', 'is-success');
+      if (tone === 'error') {
+        status.classList.add('is-error');
+      } else if (tone === 'success') {
+        status.classList.add('is-success');
+      }
+    };
+
+    const buildLabel = (dealer) => {
+      if (!dealer) return '';
+      const name = dealer.name || '';
+      const location = dealer.location || '';
+      return location ? `${name} — ${location}` : name;
+    };
+
+    const updateSelects = (options, newDealer) => {
+      const selects = document.querySelectorAll('[data-neuroai-dealership-select]');
+      selects.forEach((select) => {
+        const kind = select.getAttribute('data-neuroai-dealership-select') || 'id';
+        const placeholder = select.getAttribute('data-placeholder') || '';
+        const adoptNew = select.getAttribute('data-neuroai-adopt-new') === 'true';
+        const previousValue = select.value;
+        const fragment = document.createDocumentFragment();
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = placeholder || '';
+        fragment.appendChild(defaultOption);
+
+        const asValue = (dealer) => {
+          if (!dealer) return '';
+          if (kind === 'name') {
+            return dealer.name || '';
+          }
+          if (dealer.id === undefined || dealer.id === null) {
+            return '';
+          }
+          return String(dealer.id);
+        };
+
+        options.forEach((dealer) => {
+          const option = document.createElement('option');
+          option.value = asValue(dealer);
+          option.textContent = buildLabel(dealer);
+          if (kind === 'name') {
+            option.dataset.source = (dealer && dealer.source_slug) || '';
+          }
+          fragment.appendChild(option);
+        });
+
+        select.innerHTML = '';
+        select.appendChild(fragment);
+
+        const availableValues = new Set(
+          Array.from(select.options).map((option) => option.value)
+        );
+
+        let nextValue = previousValue;
+        const newValue = asValue(newDealer);
+        if (newValue && (adoptNew || !previousValue)) {
+          nextValue = newValue;
+        } else if (nextValue && !availableValues.has(nextValue)) {
+          nextValue = '';
+        }
+
+        if (nextValue && availableValues.has(nextValue)) {
+          select.value = nextValue;
+        } else {
+          select.value = '';
+        }
+
+        if (typeof select.__neuroaiUpdateSource === 'function') {
+          select.__neuroaiUpdateSource();
+        }
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    };
+
+    const getCsrf = () => {
+      const input = form.querySelector('input[name="csrf"]');
+      return input ? input.value : '';
+    };
+
+    addButton.addEventListener('click', async () => {
+      const nameValue = nameField.value.trim();
+      const locationValue = locationField ? locationField.value.trim() : '';
+      if (!nameValue) {
+        setStatus('Enter a name for the new dealership.', 'error');
+        nameField.focus();
+        return;
+      }
+      const formData = new FormData();
+      formData.append('csrf', getCsrf());
+      formData.append('name', nameValue);
+      if (locationValue) {
+        formData.append('location', locationValue);
+      }
+      if (logoField && logoField.files && logoField.files[0]) {
+        formData.append('logo', logoField.files[0]);
+      }
+
+      addButton.disabled = true;
+      addButton.classList.add('is-loading');
+      setStatus('Adding dealership…');
+
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          body: formData,
+          headers: {
+            Accept: 'application/json',
+          },
+        });
+        let payload;
+        try {
+          payload = await response.json();
+        } catch (error) {
+          payload = null;
+        }
+        if (!response.ok || !payload || payload.error) {
+          const message = payload && payload.error ? payload.error : `Unable to add dealership (${response.status})`;
+          throw new Error(message);
+        }
+        updateSelects(payload.options || [], payload.dealership || null);
+        nameField.value = '';
+        if (locationField) {
+          locationField.value = '';
+        }
+        if (logoField) {
+          logoField.value = '';
+        }
+        setStatus(payload.message || 'Dealership added.', 'success');
+      } catch (error) {
+        setStatus(error instanceof Error ? error.message : 'Unable to add dealership.', 'error');
+      } finally {
+        addButton.disabled = false;
+        addButton.classList.remove('is-loading');
+      }
+    });
+  })();
+  (function() {
+    const tabRoot = document.querySelector('[data-neuroai-tabs]');
+    if (!tabRoot) return;
+    const buttons = tabRoot.querySelectorAll('[data-tab-button]');
+    const panels = tabRoot.querySelectorAll('[data-tab-panel]');
+    if (!buttons.length || !panels.length) return;
+    const defaultTab = tabRoot.getAttribute('data-default-tab') || buttons[0].dataset.tabButton;
+    const activate = (name) => {
+      buttons.forEach((button) => {
+        const isActive = button.dataset.tabButton === name;
+        button.classList.toggle('is-active', isActive);
+        button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        button.setAttribute('tabindex', isActive ? '0' : '-1');
+      });
+      panels.forEach((panel) => {
+        const match = panel.dataset.tabPanel === name;
+        panel.classList.toggle('is-active', match);
+        panel.hidden = !match;
+      });
+    };
+    buttons.forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        activate(button.dataset.tabButton);
+      });
+    });
+    activate(defaultTab);
+  })();
+</script>
+{% endblock %}

@@ -1,0 +1,100 @@
+{% extends "_base.html" %}
+{% block content %}
+<section class="page-header">
+  <div>
+    <h1>Import center</h1>
+    <p class="muted">Drop raw exports and sync new inventory streams in minutes.</p>
+  </div>
+</section>
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Upload data</h2>
+        <p class="muted small">Support for marketplace JSON feeds and bespoke scrapes.</p>
+      </div>
+      <div class="actions">
+        <a class="button" href="/admin/facebook-marketplace">Open Facebook Marketplace UI</a>
+        <a class="button" href="/admin/pca-mart">Open PCA Mart UI</a>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      <div class="form-grid two">
+        <form class="form elevated" action="/admin/imports" method="post" enctype="multipart/form-data">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <label><span>Import JSON</span><input type="file" name="file" required></label>
+          <div class="form-actions">
+            <button type="submit" class="button primary">Upload generic feed</button>
+          </div>
+        </form>
+
+        <form class="form elevated" action="/admin/imports" method="post" enctype="multipart/form-data">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="dealership" value="CarsAndBids">
+          <label><span>Import JSON</span><input type="file" name="file" required></label>
+          <div class="form-actions">
+            <button type="submit" class="button">Upload Cars &amp; Bids feed</button>
+          </div>
+        </form>
+      </div>
+
+      {% if recent_deletions %}
+      <div class="table-card">
+        <div class="table-card__header">
+          <h3>Recently deleted imports</h3>
+          <p class="muted small">Restore imports removed in the last few actions.</p>
+        </div>
+        <div class="table-card__body">
+          <table class="table">
+            <thead><tr><th>Name</th><th>Cars removed</th><th>Deleted</th><th>Actions</th></tr></thead>
+            <tbody>
+            {% for undo in recent_deletions %}
+              <tr>
+                <td>{{ undo.name }}</td>
+                <td>{{ undo.deleted_count }}</td>
+                <td>{{ undo.created_at }}</td>
+                <td class="actions">
+                  <form method="post" action="/admin/imports/{{ undo.token }}/undo" style="display:inline">
+                    <input type="hidden" name="csrf" value="{{ csrf }}">
+                    <button type="submit" class="button">Undo</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="table-card">
+        <div class="table-card__body">
+          <table class="table">
+            <thead><tr><th>Name</th><th>Cars</th><th>Uploaded</th><th>Actions</th></tr></thead>
+            <tbody>
+            {% for imp in imports %}
+              <tr>
+                <td>{{ imp.name }}</td>
+                <td>{{ imp.car_count }}</td>
+                <td>{{ imp.uploaded_at }}</td>
+                <td class="actions">
+                  <form method="post" action="/admin/imports/{{ imp.id }}/delete" style="display:inline">
+                    <input type="hidden" name="csrf" value="{{ csrf }}">
+                    <button type="submit" class="button danger">Delete</button>
+                  </form>
+                  <form method="post" action="/admin/imports/{{ imp.id }}/permadelete" style="display:inline" onsubmit="return confirm('Permanently delete this import and related cars? This cannot be undone.');">
+                    <input type="hidden" name="csrf" value="{{ csrf }}">
+                    <button type="submit" class="button danger ghost">Perma Delete</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </article>
+</section>
+{% endblock %}

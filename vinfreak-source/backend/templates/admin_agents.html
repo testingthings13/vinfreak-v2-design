@@ -1,0 +1,171 @@
+{% extends "_base.html" %}
+{% block content %}
+<section class="page-header">
+  <div>
+    <h1>Agent Access</h1>
+    <p class="muted">Invite teammates to manage manual listings. Super admins can create agents, toggle access and reset passwords.</p>
+  </div>
+</section>
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Create a new agent</h2>
+        <p class="muted small">Share admin access with trusted teammates and choose the sections they can manage.</p>
+      </div>
+    </header>
+    {% if create_errors %}
+      <div class="flash error">
+        <ul>
+          {% for err in create_errors %}<li>{{ err }}</li>{% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+    <form class="form elevated" method="post" action="/admin/agents">
+      <input type="hidden" name="csrf" value="{{ csrf_token(request) }}">
+      <div class="form-grid">
+        <label>
+          <span>Username</span>
+          <input type="text" name="username" required value="{{ form_data.username if form_data else '' }}">
+        </label>
+        <label>
+          <span>Password</span>
+          <input type="password" name="password" required minlength="8" autocomplete="new-password">
+        </label>
+        <label>
+          <span>Confirm password</span>
+          <input type="password" name="confirm_password" required minlength="8" autocomplete="new-password">
+        </label>
+      </div>
+      <input type="hidden" name="sections" value="dashboard">
+      <fieldset class="section-select">
+        <legend>Allow access to these sections</legend>
+        {% set selected = form_data.sections if form_data and form_data.sections else [] %}
+        <div class="section-select-grid">
+          {% for code, label in section_choices %}
+            <label class="checkbox">
+              <input type="checkbox" name="sections" value="{{ code }}" {{ 'checked' if code in selected else '' }}>
+              <span>{{ label }}</span>
+            </label>
+          {% endfor %}
+        </div>
+        <p class="muted small">FreakOps access is always included.</p>
+      </fieldset>
+      <button type="submit" class="button primary">Create agent</button>
+    </form>
+  </article>
+</section>
+
+<section class="admin-section">
+  <header class="section-heading">
+    <div>
+      <h2>Existing accounts</h2>
+      <p class="muted small">Review team members, adjust their access and keep credentials up to date.</p>
+    </div>
+    <span class="tag">{{ agents|length }} total</span>
+  </header>
+
+  <div class="agent-grid">
+    {% for agent in agents %}
+      {% set login = agent_logins.get(agent.id) if agent_logins else None %}
+      <article class="agent-card">
+        <header class="agent-card__header">
+          <div class="agent-card__identity">
+            <h3><a class="agent-card__name" href="/admin/agents/{{ agent.id }}">{{ agent.username }}</a></h3>
+            <div class="agent-card__meta">
+              {% if agent.is_superuser %}<span class="badge">Super admin</span>{% endif %}
+              {% if login and login.is_never %}
+                <span class="badge">Never logged in</span>
+              {% elif login and login.is_stale %}
+                <span class="badge">Inactive {% if login.relative %}{{ login.relative }}{% elif login.days_inactive is not none %}{{ login.days_inactive }} day{{ 's' if login.days_inactive != 1 else '' }} ago{% endif %}</span>
+              {% endif %}
+            </div>
+          </div>
+          {% if agent.is_active %}
+            <span class="badge success">Active</span>
+          {% else %}
+            <span class="badge error">Suspended</span>
+          {% endif %}
+        </header>
+
+        <div class="muted small agent-card__status">
+          <span>Last login {{ login.formatted if login and login.formatted else '—' }}{% if login and login.relative %} • {{ login.relative }}{% elif login and login.is_never %} • Never logged in{% endif %}</span>
+        </div>
+
+        <div class="agent-card__sections">
+          <span class="muted small">Sections</span>
+          <div class="agent-card__section-pills">
+            {% set sections = agent_sections.get(agent.id) if agent_sections else [] %}
+            {% if sections %}
+              {% for code in sections %}
+                <span class="pill">{{ section_labels.get(code, code.replace('_', ' ').title()) }}</span>
+              {% endfor %}
+            {% else %}
+              <span class="muted">No sections</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <form class="agent-card__form" method="post" action="/admin/agents/{{ agent.id }}/update">
+          <input type="hidden" name="csrf" value="{{ csrf_token(request) }}">
+          <input type="hidden" name="sections" value="dashboard">
+          <div class="section-select compact">
+            <span class="muted small">Adjust access</span>
+            <div class="section-select-grid">
+              {% for code, label in section_choices %}
+                <label class="checkbox small">
+                  {% set current_sections = agent_sections.get(agent.id) if agent_sections else [] %}
+                  <input type="checkbox" name="sections" value="{{ code }}" {{ 'checked' if current_sections and code in current_sections else '' }}>
+                  <span>{{ label }}</span>
+                </label>
+              {% endfor %}
+            </div>
+          </div>
+          {% if agent.is_superuser %}
+            <input type="hidden" name="is_active" value="1">
+          {% else %}
+            <label class="checkbox">
+              <input type="checkbox" name="is_active" value="1" {{ 'checked' if agent.is_active else '' }}>
+              <span>Active</span>
+            </label>
+          {% endif %}
+          <div class="agent-card__actions">
+            <button type="submit" class="button primary">Save changes</button>
+          </div>
+        </form>
+
+        {% if not agent.is_superuser %}
+          <form class="agent-card__action danger" method="post" action="/admin/agents/{{ agent.id }}/delete" onsubmit="return confirm('Delete {{ agent.username }}? This cannot be undone.');">
+            <input type="hidden" name="csrf" value="{{ csrf_token(request) }}">
+            <button type="submit" class="button danger">Delete</button>
+          </form>
+        {% endif %}
+
+        <details class="agent-card__details">
+          <summary>Reset password</summary>
+          {% if reset_target and reset_target.id == agent.id and reset_errors %}
+            <div class="flash error small">
+              <ul>
+                {% for err in reset_errors %}<li>{{ err }}</li>{% endfor %}
+              </ul>
+            </div>
+          {% endif %}
+          <form class="form compact" method="post" action="/admin/agents/{{ agent.id }}/reset-password">
+            <input type="hidden" name="csrf" value="{{ csrf_token(request) }}">
+            <label>
+              <span>New password</span>
+              <input type="password" name="new_password" required minlength="8" autocomplete="new-password">
+            </label>
+            <label>
+              <span>Confirm password</span>
+              <input type="password" name="confirm_password" required minlength="8" autocomplete="new-password">
+            </label>
+            <button type="submit" class="button">Update password</button>
+          </form>
+        </details>
+      </article>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

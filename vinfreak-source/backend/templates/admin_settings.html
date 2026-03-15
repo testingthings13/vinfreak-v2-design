@@ -1,0 +1,300 @@
+{% extends "_base.html" %}
+{% block content %}
+<section class="page-header">
+  <div>
+    <h1>Site settings</h1>
+    <p class="muted">Control branding, defaults and communication touchpoints for the public experience.</p>
+  </div>
+</section>
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Brand &amp; experience</h2>
+        <p class="muted small">Update the values that shape how VINFREAK appears to visitors.</p>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      <form class="form elevated" action="/admin/settings" method="post" enctype="multipart/form-data">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+
+        <div class="form-grid two">
+          <label>
+            <span>Site Title</span>
+            <input type="text" name="site_title" value="{{ settings.get('site_title','') }}">
+          </label>
+          <label>
+            <span>Tagline</span>
+            <input type="text" name="site_tagline" value="{{ settings.get('site_tagline','') }}">
+          </label>
+          <label>
+            <span>Theme</span>
+            <select name="theme">
+              <option value="dark" {{ 'selected' if settings.get('theme')=='dark' else '' }}>Dark</option>
+              <option value="light" {{ 'selected' if settings.get('theme')=='light' else '' }}>Light</option>
+            </select>
+          </label>
+          <label>
+            <span>Contact email</span>
+            <input type="email" name="contact_email" value="{{ settings.get('contact_email','') }}">
+          </label>
+          <label>
+            <span>Default page size</span>
+            <input type="number" name="default_page_size" value="{{ settings.get('default_page_size','12') }}">
+          </label>
+          <label>
+            <span>Maintenance banner</span>
+            <input type="text" name="maintenance_banner" value="{{ settings.get('maintenance_banner','') }}" placeholder="Optional status message">
+          </label>
+          <label>
+            <span>Share base URL</span>
+            <input type="text" name="share_base_url" value="{{ settings.get('share_base_url','') }}" placeholder="https://vinfreak.onrender.com">
+          </label>
+        </div>
+
+        <fieldset>
+          <legend>Site password gate</legend>
+          <p class="muted small">Toggle the soft password required to view the public site and rotate the shared secret.</p>
+          <input type="hidden" name="site_password_enabled_present" value="1">
+          <label class="checkbox">
+            <input
+              type="checkbox"
+              name="site_password_enabled"
+              value="1"
+              {% set gate_enabled_value = (settings.get('site_password_enabled', '1') or '1')|string|lower %}
+              {% if gate_enabled_value not in ['0','false','no','off'] %}checked{% endif %}
+            >
+            <span>Require password to access the site</span>
+          </label>
+          <label>
+            <span>New site password</span>
+            <input
+              type="password"
+              name="site_password"
+              placeholder="Leave blank to keep the current password"
+              autocomplete="new-password"
+            >
+          </label>
+          <p class="muted tiny">Current password version: {{ settings.get('site_password_version', 'default') }}</p>
+        </fieldset>
+
+        <fieldset class="brand-filter-fieldset">
+          <legend>Brand filter selection</legend>
+          <p class="brand-filter-hint">Choose which brands appear in the public brand filter. Listings remain unchanged.</p>
+          {% if makes %}
+          <div class="brand-filter-grid">
+            {% for make in makes %}
+            {% set make_id_str = '%s' % (make.id,) %}
+            {% set make_name_key = (make.name or '')|lower %}
+            <label class="brand-filter-option">
+              <input
+                type="checkbox"
+                name="brand_filter_make_ids"
+                value="{{ make.id }}"
+                {% if make_id_str in selected_brand_ids or make_name_key in selected_brand_ids %}checked{% endif %}
+              >
+              <span>{{ make.name }}</span>
+            </label>
+            {% endfor %}
+          </div>
+          {% else %}
+          <p class="brand-filter-empty">No brands found.</p>
+          {% endif %}
+        </fieldset>
+
+        <fieldset>
+          <legend>Homepage filter controls</legend>
+          <p class="muted small">Control each homepage filter element independently. The top-level toggle hides all filter controls.</p>
+          {% set top_filters_value = (settings.get('home_top_filters_enabled', '0') or '0')|string|lower %}
+          {% set make_filter_value = (settings.get('home_make_filter_enabled', '0') or '0')|string|lower %}
+          {% set dealership_filter_value = (settings.get('home_dealership_filter_enabled', '0') or '0')|string|lower %}
+          {% set new_listing_badge_value = (settings.get('home_new_listing_badge_enabled', '1') or '1')|string|lower %}
+          {% set inventory_type_pills_value = (settings.get('home_inventory_type_pills_enabled', '0') or '0')|string|lower %}
+          {% set sort_label_value = (settings.get('home_sort_label_enabled', '0') or '0')|string|lower %}
+          {% set filter_counts_value = (settings.get('home_filter_counts_enabled', '0') or '0')|string|lower %}
+          <input type="hidden" name="home_top_filters_enabled_present" value="1">
+          <label class="checkbox">
+            <input
+              type="checkbox"
+              name="home_top_filters_enabled"
+              value="1"
+              {% if top_filters_value in ['1','true','yes','on'] %}checked{% endif %}
+            >
+            <span>Show homepage filter controls</span>
+          </label>
+          <input type="hidden" name="home_make_filter_enabled_present" value="1">
+          <label class="checkbox">
+            <input
+              type="checkbox"
+              name="home_make_filter_enabled"
+              value="1"
+              {% if make_filter_value in ['1','true','yes','on'] %}checked{% endif %}
+            >
+            <span>Show make dropdown</span>
+          </label>
+          <input type="hidden" name="home_dealership_filter_enabled_present" value="1">
+          <label class="checkbox">
+            <input
+              type="checkbox"
+              name="home_dealership_filter_enabled"
+              value="1"
+              {% if dealership_filter_value in ['1','true','yes','on'] %}checked{% endif %}
+            >
+            <span>Show dealership dropdown</span>
+          </label>
+          <input type="hidden" name="home_new_listing_badge_enabled_present" value="1">
+          <label class="checkbox">
+            <input
+              type="checkbox"
+              name="home_new_listing_badge_enabled"
+              value="1"
+              {% if new_listing_badge_value in ['1','true','yes','on'] %}checked{% endif %}
+            >
+            <span>Show NEW! badge for auction listings posted in the last 7 days</span>
+          </label>
+          <input type="hidden" name="home_inventory_type_pills_enabled_present" value="1">
+          <label class="checkbox">
+            <input
+              type="checkbox"
+              name="home_inventory_type_pills_enabled"
+              value="1"
+              {% if inventory_type_pills_value in ['1','true','yes','on'] %}checked{% endif %}
+            >
+            <span>Show inventory type pills (All / Auction / Dealership)</span>
+          </label>
+          <input type="hidden" name="home_sort_label_enabled_present" value="1">
+          <label class="checkbox">
+            <input
+              type="checkbox"
+              name="home_sort_label_enabled"
+              value="1"
+              {% if sort_label_value in ['1','true','yes','on'] %}checked{% endif %}
+            >
+            <span>Show 'Sort inventory' label above sort dropdown</span>
+          </label>
+          <input type="hidden" name="home_filter_counts_enabled_present" value="1">
+          <label class="checkbox">
+            <input
+              type="checkbox"
+              name="home_filter_counts_enabled"
+              value="1"
+              {% if filter_counts_value in ['1','true','yes','on'] %}checked{% endif %}
+            >
+            <span>Show car counts in make/dealership dropdowns</span>
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Homepage lower panels</legend>
+          <p class="muted small">Show or hide the footer filter row, hero block, dealer partners, and location focus on the public homepage.</p>
+          <input type="hidden" name="home_footer_panels_enabled_present" value="1">
+          <label class="checkbox">
+            <input
+              type="checkbox"
+              name="home_footer_panels_enabled"
+              value="1"
+              {% set footer_panels_value = (settings.get('home_footer_panels_enabled', '0') or '0')|string|lower %}
+              {% if footer_panels_value in ['1','true','yes','on'] %}checked{% endif %}
+            >
+            <span>Show homepage lower panels</span>
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Spotify player</legend>
+          <p class="muted small">Show or hide the Spotify section and its controls on the public site.</p>
+          <input type="hidden" name="spotify_widget_enabled_present" value="1">
+          <label class="checkbox">
+            <input
+              type="checkbox"
+              name="spotify_widget_enabled"
+              value="1"
+              {% set spotify_widget_value = (settings.get('spotify_widget_enabled', '1') or '1')|string|lower %}
+              {% if spotify_widget_value in ['1','true','yes','on'] %}checked{% endif %}
+            >
+            <span>Show Spotify activate/deactivate controls</span>
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Brand assets</legend>
+          <div class="form-grid two">
+            <label>
+              <span>Upload logo</span>
+              <input type="file" name="logo">
+            </label>
+            <label>
+              <span>Logo URL</span>
+              <input type="text" name="logo_url" value="{{ settings.get('logo_url','') }}" placeholder="https://...">
+            </label>
+            <label>
+              <span>Logo width</span>
+              <input type="number" name="logo_width" value="{{ settings.get('logo_width','64') }}">
+            </label>
+            <label>
+              <span>Logo height</span>
+              <input type="number" name="logo_height" value="{{ settings.get('logo_height','64') }}">
+            </label>
+          </div>
+          {% if settings.get('logo_url') %}
+          <div class="preview"><img src="{{ settings.get('logo_url') }}" alt="logo" style="width:{{ settings.get('logo_width','64') }}px;height:{{ settings.get('logo_height','64') }}px;border-radius:50%"></div>
+          {% endif %}
+        </fieldset>
+
+        <fieldset>
+          <legend>FreakGPT button icon</legend>
+          <div class="form-grid two">
+            <label>
+              <span>Upload icon</span>
+              <input type="file" name="freakstats_icon">
+            </label>
+            <label>
+              <span>Icon URL</span>
+              <input type="text" name="freakstats_icon_url" value="{{ settings.get('freakstats_icon_url','') }}" placeholder="https://...">
+            </label>
+            <label>
+              <span>Icon width (px)</span>
+              <input type="number" name="freakstats_icon_width" value="{{ settings.get('freakstats_icon_width','') }}" placeholder="Auto">
+            </label>
+            <label>
+              <span>Icon height (px)</span>
+              <input type="number" name="freakstats_icon_height" value="{{ settings.get('freakstats_icon_height','') }}" placeholder="Auto">
+            </label>
+          </div>
+          {% if settings.get('freakstats_icon_url') %}
+          <div class="preview">
+            <img
+              src="{{ settings.get('freakstats_icon_url') }}"
+              alt="FreakGPT icon"
+              style="{% if settings.get('freakstats_icon_width') %}width:{{ settings.get('freakstats_icon_width') }}px;{% endif %}{% if settings.get('freakstats_icon_height') %}height:{{ settings.get('freakstats_icon_height') }}px;{% endif %}object-fit:contain"
+            >
+          </div>
+          {% endif %}
+        </fieldset>
+
+        <fieldset>
+          <legend>Favicon</legend>
+          <div class="form-grid two">
+            <label>
+              <span>Upload favicon</span>
+              <input type="file" name="favicon">
+            </label>
+            <label>
+              <span>Favicon URL</span>
+              <input type="text" name="favicon_url" value="{{ settings.get('favicon_url','') }}" placeholder="https://...">
+            </label>
+          </div>
+          {% if settings.get('favicon_url') %}
+          <div class="preview"><img src="{{ settings.get('favicon_url') }}" alt="favicon" style="height:32px"></div>
+          {% endif %}
+        </fieldset>
+
+        <div class="form-actions">
+          <button type="submit" class="button primary">Save settings</button>
+        </div>
+      </form>
+    </div>
+  </article>
+</section>
+{% endblock %}

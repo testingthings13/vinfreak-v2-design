@@ -1,0 +1,848 @@
+{% extends "_base.html" %}
+{% block content %}
+<section class="page-header">
+  <div>
+    <h1>Facebook Marketplace</h1>
+    <p class="muted">Run one-click Marketplace imports using built-in search options.</p>
+  </div>
+</section>
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Integration Status</h2>
+        <p class="muted small">Imports run only when the Marketplace integration flag is enabled.</p>
+      </div>
+      <div class="actions">
+        <span class="badge">{{ "Enabled" if facebook_marketplace_enabled else "Disabled" }}</span>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      <p class="muted small">
+        Endpoint: <code>{{ graphql_endpoint }}</code> |
+        Access token configured: <strong>{{ "Yes" if token_configured else "No" }}</strong> |
+        Session cookie configured: <strong>{{ "Yes" if session_cookie_configured else "No" }}</strong>
+      </p>
+      <p class="muted small">
+        If imports fail with a non-JSON Facebook response, set backend env
+        <code>FACEBOOK_MARKETPLACE_SESSION_COOKIE</code> from an authenticated session
+        (must include <code>c_user</code> and <code>xs</code>).
+      </p>
+      {% if not facebook_marketplace_enabled %}
+      <p class="muted small">Set <code>FACEBOOK_MARKETPLACE_IMPORT_ENABLED=1</code> in backend environment settings to run imports.</p>
+      {% endif %}
+      <form method="post" action="/admin/facebook-marketplace/diagnostics">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <div class="form-actions">
+          <button type="submit" class="button">Validate Session Cookie</button>
+        </div>
+      </form>
+    </div>
+  </article>
+</section>
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Picture Repair</h2>
+        <p class="muted small">Fix FB avatar/profile images saved as listing photos across imported rows.</p>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      <form
+        id="fb-picture-fix-form"
+        class="form elevated"
+        method="post"
+        action="/admin/facebook-marketplace/fix-pictures"
+      >
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <div class="form-grid two">
+          <label>
+            <span>Rows limit (0 = all)</span>
+            <input type="number" name="limit" min="0" value="0" />
+          </label>
+          <label>
+            <span>Mode</span>
+            <span class="muted small">
+              <input type="checkbox" name="enrich_from_listing_page" value="1" checked />
+              Try listing-page enrichment when needed
+            </span>
+          </label>
+        </div>
+        <label>
+          <span>Target car IDs (optional)</span>
+          <textarea
+            name="target_ids"
+            rows="4"
+            placeholder="171903 171902 171901 (comma, space, or newline separated)"
+          ></textarea>
+          <span class="muted small">When provided, only those car IDs are rechecked and updated.</span>
+        </label>
+        <div class="form-actions">
+          <button type="submit" class="button primary">Fix Pictures at FBM</button>
+        </div>
+      </form>
+      <p class="muted small" id="fb-picture-fix-status" aria-live="polite"></p>
+
+      {% set picture_fix = facebook_marketplace_last_picture_fix_result %}
+      {% if picture_fix %}
+      <p class="muted small">
+        Last run: scanned <strong>{{ picture_fix.get("scanned", 0) }}</strong>,
+        changed <strong>{{ picture_fix.get("changed", 0) }}</strong>,
+        primary replaced <strong>{{ picture_fix.get("primary_replaced", 0) }}</strong>,
+        canonicalized URLs <strong>{{ picture_fix.get("canonicalized_url", 0) }}</strong>.
+      </p>
+      <p class="muted small">
+        Enriched rows: <strong>{{ picture_fix.get("enriched_rows", 0) }}</strong> |
+        Remaining avatar-like primary: <strong>{{ picture_fix.get("still_avatar_primary", 0) }}</strong> |
+        No primary after fix: <strong>{{ picture_fix.get("no_primary_after", 0) }}</strong>.
+      </p>
+      <div class="table-card">
+        <div class="table-card__body">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Run Details</th>
+                <th>Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Started (UTC)</td>
+                <td>{{ picture_fix.get("started_at") or "-" }}</td>
+              </tr>
+              <tr>
+                <td>Finished (UTC)</td>
+                <td>{{ picture_fix.get("finished_at") or "-" }}</td>
+              </tr>
+              <tr>
+                <td>Duration</td>
+                <td>{{ picture_fix.get("duration_seconds", 0) }}s</td>
+              </tr>
+              <tr>
+                <td>Listing-page enrichment</td>
+                <td>{{ "Enabled" if picture_fix.get("enrich_from_listing_page") else "Disabled" }}</td>
+              </tr>
+              <tr>
+                <td>Row limit</td>
+                <td>{{ picture_fix.get("limit", 0) }}</td>
+              </tr>
+              <tr>
+                <td>Target IDs matched/requested</td>
+                <td>{{ picture_fix.get("target_ids_matched", 0) }}/{{ picture_fix.get("target_ids_requested", 0) }}</td>
+              </tr>
+              <tr>
+                <td>Enrichment attempts</td>
+                <td>{{ picture_fix.get("enrichment_attempted", 0) }}</td>
+              </tr>
+              <tr>
+                <td>Enrichment success (images recovered)</td>
+                <td>{{ picture_fix.get("enrichment_success", 0) }}</td>
+              </tr>
+              <tr>
+                <td>Enrichment no-image pages</td>
+                <td>{{ picture_fix.get("enrichment_no_images", 0) }}</td>
+              </tr>
+              <tr>
+                <td>Enrichment login-gated pages</td>
+                <td>{{ picture_fix.get("enrichment_login_gate", 0) }}</td>
+              </tr>
+              <tr>
+                <td>Enrichment temporarily blocked pages</td>
+                <td>{{ picture_fix.get("enrichment_temporarily_blocked", 0) }}</td>
+              </tr>
+              <tr>
+                <td>Enrichment HTTP errors</td>
+                <td>{{ picture_fix.get("enrichment_http_error", 0) }}</td>
+              </tr>
+              <tr>
+                <td>Enrichment request errors</td>
+                <td>{{ picture_fix.get("enrichment_request_error", 0) }}</td>
+              </tr>
+              <tr>
+                <td>Cookie retry enabled</td>
+                <td>{{ "Yes" if picture_fix.get("enrichment_cookie_retry_enabled") else "No" }}</td>
+              </tr>
+              <tr>
+                <td>Cookie retry attempted</td>
+                <td>{{ picture_fix.get("enrichment_cookie_retry_attempted", 0) }}</td>
+              </tr>
+              <tr>
+                <td>Cookie retry success</td>
+                <td>{{ picture_fix.get("enrichment_cookie_retry_success", 0) }}</td>
+              </tr>
+              <tr>
+                <td>Primary CDN caching</td>
+                <td>{{ "Enabled" if picture_fix.get("cache_primary_to_cdn") else "Disabled" }}</td>
+              </tr>
+              <tr>
+                <td>CDN category</td>
+                <td>{{ picture_fix.get("cdn_category") or "-" }}</td>
+              </tr>
+              <tr>
+                <td>CDN upload attempted</td>
+                <td>{{ picture_fix.get("cdn_upload_attempted", 0) }}</td>
+              </tr>
+              <tr>
+                <td>CDN upload success</td>
+                <td>{{ picture_fix.get("cdn_upload_success", 0) }}</td>
+              </tr>
+              <tr>
+                <td>CDN upload failed</td>
+                <td>{{ picture_fix.get("cdn_upload_failed", 0) }}</td>
+              </tr>
+              <tr>
+                <td>CDN primary replaced</td>
+                <td>{{ picture_fix.get("cdn_primary_replaced", 0) }}</td>
+              </tr>
+              <tr>
+                <td>Cookie retry temp-blocked</td>
+                <td>{{ picture_fix.get("enrichment_cookie_retry_temporarily_blocked", 0) }}</td>
+              </tr>
+              <tr>
+                <td>Cookie retry disabled due temp-block</td>
+                <td>{{ picture_fix.get("enrichment_cookie_retry_disabled_due_temp_block", 0) }}</td>
+              </tr>
+              <tr>
+                <td>Enrichment aborted due temp-block burst</td>
+                <td>{{ "Yes" if picture_fix.get("enrichment_aborted_due_temp_block") else "No" }}</td>
+              </tr>
+              <tr>
+                <td>Enrichment skipped after temp-block abort</td>
+                <td>{{ picture_fix.get("enrichment_skipped_after_temp_block", 0) }}</td>
+              </tr>
+              <tr>
+                <td>Skipped (missing listing URL)</td>
+                <td>{{ picture_fix.get("skipped_missing_listing_url", 0) }}</td>
+              </tr>
+              <tr>
+                <td>Rows with primary before</td>
+                <td>{{ picture_fix.get("had_primary_before", 0) }}</td>
+              </tr>
+              <tr>
+                <td>Rows with any image candidates before</td>
+                <td>{{ picture_fix.get("had_any_image_candidates_before", 0) }}</td>
+              </tr>
+              <tr>
+                <td>Unsupported primary cleared</td>
+                <td>{{ picture_fix.get("unsupported_primary_cleared", 0) }}</td>
+              </tr>
+              <tr>
+                <td>Rows with no primary after</td>
+                <td>{{ picture_fix.get("no_primary_after", 0) }}</td>
+              </tr>
+              <tr>
+                <td>Rows with creative primary before (t45/t15)</td>
+                <td>{{ picture_fix.get("creative_primary_before", 0) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% if picture_fix.get("sample_changes") %}
+      <details>
+        <summary>Sample changed rows (first {{ picture_fix.get("sample_changes")|length }})</summary>
+        <ul class="cards">
+          {% for line in picture_fix.get("sample_changes") %}
+          <li class="card"><code>{{ line }}</code></li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endif %}
+      {% endif %}
+    </div>
+  </article>
+</section>
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Run Import</h2>
+        <p class="muted small">No JSON paste and no feed URL required. Tune search options, fetch, review, then approve.</p>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      <form class="form elevated" method="post" action="/admin/facebook-marketplace">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <div class="form-grid two">
+          <label>
+            <span>Search Query</span>
+            <input type="text" name="query" value="{{ form_state.query }}" placeholder="Vehicles" />
+          </label>
+          <label>
+            <span>Saved Query Preset</span>
+            <select name="preset_query" id="fb-preset-query">
+              <option value="">Custom / default query</option>
+              {% for preset in facebook_marketplace_query_presets %}
+              <option
+                value="{{ preset.get('query') }}"
+                {% if form_state.preset_query|string == preset.get('query', '')|string %}selected{% endif %}
+              >
+                {{ preset.get("query") }}
+              </option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            <span>Category ID</span>
+            <input type="text" name="category_id" value="{{ form_state.category_id }}" placeholder="546583916084032" />
+          </label>
+          <label>
+            <span>State (USA)</span>
+            <input
+              type="text"
+              name="location_state"
+              value="{{ form_state.location_state or '' }}"
+              list="fb-us-state-list"
+              placeholder="CA or California"
+              autocomplete="off"
+            />
+          </label>
+          <label>
+            <span>City (optional)</span>
+            <input
+              type="text"
+              name="location_city"
+              value="{{ form_state.location_city or '' }}"
+              list="fb-us-city-list"
+              placeholder="Dallas"
+              autocomplete="off"
+            />
+          </label>
+          <label>
+            <span>Radius (km)</span>
+            <input type="number" name="radius_km" min="1" max="5000" value="{{ form_state.radius_km or '500' }}" />
+          </label>
+          <label>
+            <span>Cursor (optional)</span>
+            <input type="text" name="cursor" value="{{ form_state.cursor }}" placeholder="Leave blank for first page" />
+          </label>
+          <label>
+            <span>Limit (1-3000)</span>
+            <input type="number" name="limit" min="1" max="3000" value="{{ form_state.limit or '50' }}" />
+          </label>
+          <label>
+            <span>Import Name</span>
+            <input type="text" name="import_name" value="{{ form_state.import_name }}" maxlength="120" />
+          </label>
+          <label>
+            <span>Dealership (optional)</span>
+            <select name="dealership_id">
+              <option value="">None</option>
+              {% for dealership in dealerships %}
+              <option value="{{ dealership.id }}" {% if form_state.dealership_id|string == dealership.id|string %}selected{% endif %}>{{ dealership.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <datalist id="fb-us-state-list">
+          {% for state in facebook_marketplace_states %}
+          <option value="{{ state.code }}">{{ state.name }}</option>
+          <option value="{{ state.name }}">{{ state.code }}</option>
+          {% endfor %}
+        </datalist>
+        <datalist id="fb-us-city-list">
+          {% for city in facebook_marketplace_city_suggestions %}
+          <option value="{{ city.name }}"></option>
+          {% endfor %}
+        </datalist>
+        <details>
+          <summary>Advanced: Manual Coordinates</summary>
+          <div class="form-grid two">
+            <label>
+              <span>Latitude</span>
+              <input type="text" name="latitude" value="{{ form_state.latitude }}" placeholder="35.1258" />
+            </label>
+            <label>
+              <span>Longitude</span>
+              <input type="text" name="longitude" value="{{ form_state.longitude }}" placeholder="-117.985" />
+            </label>
+          </div>
+          <p class="muted small">If State is selected above, it overrides manual latitude/longitude.</p>
+        </details>
+        <p class="muted small">Advanced feed/JSON inputs are hidden from this page. Backend support remains for compatibility.</p>
+        <div class="form-actions">
+          <button type="submit" class="button primary">Fetch &amp; Review Listings</button>
+          <a class="button" href="/admin/jobs">View Jobs</a>
+          <a class="button" href="/admin/imports">Back to Car Imports</a>
+        </div>
+        <p id="fb-job-status" class="muted small" aria-live="polite"></p>
+      </form>
+    </div>
+  </article>
+</section>
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Search Presets (Brand + Model)</h2>
+        <p class="muted small">
+          Built-in presets: <strong>{{ facebook_marketplace_builtin_query_presets_count }}</strong> |
+          Custom presets: <strong>{{ facebook_marketplace_custom_query_presets_count }}</strong> |
+          Total available in run form: <strong>{{ facebook_marketplace_query_presets|length }}</strong>
+        </p>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      <form class="form elevated" method="post" action="/admin/facebook-marketplace/query-presets">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="mode" value="add">
+        <div class="form-grid two">
+          <label>
+            <span>Brand</span>
+            <input type="text" name="preset_make" placeholder="Ferrari" />
+          </label>
+          <label>
+            <span>Model</span>
+            <input type="text" name="preset_model" placeholder="F40" />
+          </label>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="button">Add Brand + Model Preset</button>
+        </div>
+      </form>
+
+      <form class="form elevated" method="post" action="/admin/facebook-marketplace/query-presets">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="mode" value="replace">
+        <label>
+          <span>Custom Presets (one per line)</span>
+          <textarea
+            name="preset_bulk_text"
+            rows="10"
+            placeholder="Ferrari\tF40&#10;Porsche\t911 GT3&#10;McLaren\tP1"
+          >{{ facebook_marketplace_custom_query_presets_text }}</textarea>
+        </label>
+        <p class="muted small">
+          Line formats accepted: <code>Brand[TAB]Model</code>, <code>Brand | Model</code>, <code>Brand, Model</code>, or query text.
+        </p>
+        <div class="form-actions">
+          <button type="submit" class="button primary">Save Custom Presets</button>
+        </div>
+      </form>
+
+      <form method="post" action="/admin/facebook-marketplace/query-presets">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="mode" value="reset">
+        <div class="form-actions">
+          <button type="submit" class="button">Reset Custom Presets</button>
+        </div>
+      </form>
+    </div>
+  </article>
+</section>
+
+{% if preview %}
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Preview Listings</h2>
+        <p class="muted small">Uncheck rows you do not want to import, then apply selected listings.</p>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      <p class="muted small">
+        Fetched: <strong>{{ preview.get("fetched", 0) }}</strong> |
+        Prepared: <strong>{{ preview.get("prepared", 0) }}</strong> |
+        Normalize skipped: <strong>{{ preview.get("normalize_skipped", 0) }}</strong> |
+        Dealership ID: <strong>{{ preview.get("dealership_id") if preview.get("dealership_id") is not none else "-" }}</strong>
+      </p>
+      <form method="post" action="/admin/facebook-marketplace/apply">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <div class="form-actions">
+          <button type="button" class="button" id="fb-select-all">Select all</button>
+          <button type="button" class="button" id="fb-select-none">Select none</button>
+          <button type="submit" class="button primary">Apply Selected Listings</button>
+        </div>
+        <div class="table-card">
+          <div class="table-card__body">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Select</th>
+                  <th>Title</th>
+                  <th>Price</th>
+                  <th>Year</th>
+                  <th>Mileage</th>
+                  <th>Location</th>
+                  <th>URL</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for item in preview.get("items", []) %}
+                <tr>
+                  <td>
+                    <input type="checkbox" name="selected_indices" value="{{ loop.index0 }}" checked class="fb-preview-check">
+                  </td>
+                  <td>{{ item.get("title") or "-" }}</td>
+                  <td>{{ item.get("price") if item.get("price") is not none else "-" }}</td>
+                  <td>{{ item.get("year") if item.get("year") is not none else "-" }}</td>
+                  <td>{{ item.get("mileage") if item.get("mileage") is not none else "-" }}</td>
+                  <td>{{ item.get("city") or "-" }}{% if item.get("state") %}, {{ item.get("state") }}{% endif %}</td>
+                  <td>
+                    {% if item.get("url") %}
+                    <a href="{{ item.get("url") }}" target="_blank" rel="noopener">Open</a>
+                    {% else %}
+                    -
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </form>
+      <form method="post" action="/admin/facebook-marketplace/preview/clear">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <div class="form-actions">
+          <button type="submit" class="button">Discard Preview</button>
+        </div>
+      </form>
+    </div>
+  </article>
+</section>
+{% endif %}
+
+{% if last_result %}
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Last Result</h2>
+        <p class="muted small">Most recent run summary from this admin session.</p>
+      </div>
+    </header>
+    <div class="table-card">
+      <div class="table-card__body">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Fetched</th>
+              <th>Prepared</th>
+              <th>Approved</th>
+              <th>Inserted</th>
+              <th>Updated</th>
+              <th>Skipped</th>
+              <th>Dealership ID</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>{{ last_result.get("fetched", 0) }}</td>
+              <td>{{ last_result.get("prepared", 0) }}</td>
+              <td>{{ last_result.get("approved", last_result.get("prepared", 0)) }}</td>
+              <td>{{ last_result.get("inserted", 0) }}</td>
+              <td>{{ last_result.get("updated", 0) }}</td>
+              <td>{{ last_result.get("skipped", 0) }}</td>
+              <td>{{ last_result.get("dealership_id") if last_result.get("dealership_id") is not none else "-" }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </article>
+</section>
+{% endif %}
+
+<script>
+  (function () {
+    var selectAll = document.getElementById("fb-select-all");
+    var selectNone = document.getElementById("fb-select-none");
+    if (selectAll && selectNone) {
+      function setChecks(checked) {
+        var nodes = document.querySelectorAll(".fb-preview-check");
+        nodes.forEach(function (node) { node.checked = checked; });
+      }
+      selectAll.addEventListener("click", function () { setChecks(true); });
+      selectNone.addEventListener("click", function () { setChecks(false); });
+    }
+
+    var runForm = document.querySelector('form.form.elevated[action="/admin/facebook-marketplace"]');
+    var runButton = runForm ? runForm.querySelector('button[type="submit"]') : null;
+    var queryInput = runForm ? runForm.querySelector('input[name="query"]') : null;
+    var presetSelect = document.getElementById("fb-preset-query");
+    var statusNode = document.getElementById("fb-job-status");
+    var jobsEndpoint = "{{ facebook_marketplace_jobs_endpoint }}";
+    var activeJobId = "{{ facebook_marketplace_active_job_id or '' }}";
+    var pollTimer = null;
+
+    function setStatus(message) {
+      if (!statusNode) return;
+      statusNode.textContent = message || "";
+    }
+
+    function setRunBusy(isBusy) {
+      if (!runButton) return;
+      runButton.disabled = !!isBusy;
+      runButton.textContent = isBusy ? "Fetching..." : "Fetch & Review Listings";
+    }
+
+    function pollJob(jobId) {
+      if (!jobId || !jobsEndpoint) return;
+      fetch(jobsEndpoint + "/" + encodeURIComponent(jobId), {
+        credentials: "same-origin",
+        headers: { "Accept": "application/json" }
+      })
+        .then(function (response) {
+          return response.json().catch(function () { return {}; }).then(function (payload) {
+            return { ok: response.ok, payload: payload };
+          });
+        })
+        .then(function (result) {
+          if (!result.ok) {
+            var errMsg = (result.payload && result.payload.detail) || "Unable to read job status.";
+            throw new Error(errMsg);
+          }
+          var payload = result.payload || {};
+          if (payload.message) {
+            setStatus(payload.message);
+          }
+          if (payload.done) {
+            setRunBusy(false);
+            if (payload.status === "succeeded") {
+              var redirectUrl = payload.redirect_url || "/admin/facebook-marketplace";
+              window.location.assign(redirectUrl);
+            } else {
+              setStatus(payload.message || "Background fetch failed.");
+            }
+            return;
+          }
+          pollTimer = window.setTimeout(function () {
+            pollJob(jobId);
+          }, 2200);
+        })
+        .catch(function (err) {
+          setRunBusy(false);
+          setStatus((err && err.message) || "Background fetch failed.");
+        });
+    }
+
+    if (runForm && jobsEndpoint && window.fetch && window.FormData) {
+      if (presetSelect && queryInput) {
+        presetSelect.addEventListener("change", function () {
+          var selected = (presetSelect.value || "").trim();
+          if (selected) {
+            queryInput.value = selected;
+          }
+        });
+      }
+      runForm.addEventListener("submit", function (event) {
+        event.preventDefault();
+        if (pollTimer) {
+          window.clearTimeout(pollTimer);
+          pollTimer = null;
+        }
+        setRunBusy(true);
+        setStatus("Starting Facebook Marketplace background fetch...");
+        fetch(jobsEndpoint, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Accept": "application/json" },
+          body: new FormData(runForm)
+        })
+          .then(function (response) {
+            return response.json().catch(function () { return {}; }).then(function (payload) {
+              return { ok: response.ok, payload: payload };
+            });
+          })
+          .then(function (result) {
+            if (!result.ok) {
+              if (result.payload && result.payload.job_id) {
+                setStatus(((result.payload && result.payload.message) || "Background fetch already running.") + " Track it in Jobs tab.");
+                setRunBusy(false);
+                return;
+              }
+              var errMsg = (result.payload && (result.payload.message || result.payload.detail)) || "Unable to start background fetch.";
+              throw new Error(errMsg);
+            }
+            var jobId = result.payload && result.payload.job_id;
+            if (!jobId) {
+              throw new Error("Background fetch did not return a job id.");
+            }
+            setStatus((result.payload.message || "Background fetch started.") + " Track it in Jobs tab.");
+            setRunBusy(false);
+          })
+          .catch(function (err) {
+            setRunBusy(false);
+            setStatus((err && err.message) || "Unable to start background fetch.");
+          });
+      });
+
+      if (activeJobId) {
+        setStatus("A previous Facebook Marketplace job is still running. Track progress in Jobs tab.");
+      }
+    }
+
+    var pictureFixForm = document.getElementById("fb-picture-fix-form");
+    var pictureFixButton = pictureFixForm ? pictureFixForm.querySelector('button[type="submit"]') : null;
+    var pictureFixStatusNode = document.getElementById("fb-picture-fix-status");
+    var pictureFixJobsEndpoint = "{{ facebook_marketplace_picture_fix_jobs_endpoint }}";
+    var activePictureFixJobId = "{{ facebook_marketplace_active_picture_fix_job_id or '' }}";
+    var pictureFixPollTimer = null;
+
+    function setPictureFixStatus(message) {
+      if (!pictureFixStatusNode) return;
+      pictureFixStatusNode.textContent = message || "";
+    }
+
+    function setPictureFixBusy(isBusy) {
+      if (!pictureFixButton) return;
+      pictureFixButton.disabled = !!isBusy;
+      pictureFixButton.textContent = isBusy ? "Fixing..." : "Fix Pictures at FBM";
+    }
+
+    function pollPictureFixJob(jobId) {
+      if (!jobId || !jobsEndpoint) return;
+      fetch(jobsEndpoint + "/" + encodeURIComponent(jobId), {
+        credentials: "same-origin",
+        headers: { "Accept": "application/json" }
+      })
+        .then(function (response) {
+          return response.json().catch(function () { return {}; }).then(function (payload) {
+            return { ok: response.ok, payload: payload };
+          });
+        })
+        .then(function (result) {
+          if (!result.ok) {
+            var errMsg = (result.payload && (result.payload.message || result.payload.detail)) || "Unable to read picture-fix job status.";
+            throw new Error(errMsg);
+          }
+          var payload = result.payload || {};
+          if (payload.message) {
+            setPictureFixStatus(payload.message);
+          }
+          if (payload.done) {
+            setPictureFixBusy(false);
+            if (payload.status === "succeeded") {
+              var redirectUrl = payload.redirect_url || "/admin/facebook-marketplace";
+              window.location.assign(redirectUrl);
+            } else {
+              setPictureFixStatus(payload.message || "Fix Pictures job failed.");
+            }
+            return;
+          }
+          pictureFixPollTimer = window.setTimeout(function () {
+            pollPictureFixJob(jobId);
+          }, 2200);
+        })
+        .catch(function (err) {
+          setPictureFixBusy(false);
+          setPictureFixStatus((err && err.message) || "Unable to poll Fix Pictures job.");
+        });
+    }
+
+    if (pictureFixForm && pictureFixJobsEndpoint && jobsEndpoint && window.fetch && window.FormData) {
+      pictureFixForm.addEventListener("submit", function (event) {
+        event.preventDefault();
+        if (pictureFixPollTimer) {
+          window.clearTimeout(pictureFixPollTimer);
+          pictureFixPollTimer = null;
+        }
+        setPictureFixBusy(true);
+        setPictureFixStatus("Starting Fix Pictures background job...");
+        fetch(pictureFixJobsEndpoint, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Accept": "application/json" },
+          body: new FormData(pictureFixForm)
+        })
+          .then(function (response) {
+            return response.json().catch(function () { return {}; }).then(function (payload) {
+              return { ok: response.ok, payload: payload };
+            });
+          })
+          .then(function (result) {
+            if (!result.ok) {
+              var errMsg = (result.payload && (result.payload.message || result.payload.detail)) || "Unable to start Fix Pictures job.";
+              throw new Error(errMsg);
+            }
+            var jobId = result.payload && result.payload.job_id;
+            if (!jobId) {
+              throw new Error("Fix Pictures job did not return a job id.");
+            }
+            setPictureFixStatus(result.payload.message || "Fix Pictures job started.");
+            pollPictureFixJob(jobId);
+          })
+          .catch(function (err) {
+            setPictureFixBusy(false);
+            setPictureFixStatus((err && err.message) || "Unable to start Fix Pictures job.");
+          });
+      });
+
+      if (activePictureFixJobId) {
+        setPictureFixBusy(true);
+        setPictureFixStatus("Resuming active Fix Pictures background job...");
+        pollPictureFixJob(activePictureFixJobId);
+      }
+    }
+
+    var stateInput = document.querySelector('input[name="location_state"]');
+    var cityInput = document.querySelector('input[name="location_city"]');
+    var cityList = document.getElementById("fb-us-city-list");
+    var citiesEndpoint = "{{ facebook_marketplace_cities_endpoint }}";
+    if (!stateInput || !cityInput || !cityList || !citiesEndpoint) return;
+
+    var timerId = null;
+    var requestId = 0;
+
+    function setCityOptions(items) {
+      cityList.innerHTML = "";
+      (items || []).forEach(function (item) {
+        if (!item || !item.name) return;
+        var option = document.createElement("option");
+        option.value = item.name;
+        cityList.appendChild(option);
+      });
+    }
+
+    function loadCities() {
+      var stateValue = (stateInput.value || "").trim();
+      var cityQuery = (cityInput.value || "").trim();
+      if (!stateValue) {
+        setCityOptions([]);
+        return;
+      }
+      var thisRequest = ++requestId;
+      var url = citiesEndpoint
+        + "?state=" + encodeURIComponent(stateValue)
+        + "&q=" + encodeURIComponent(cityQuery)
+        + "&limit=80";
+      fetch(url, { credentials: "same-origin" })
+        .then(function (response) {
+          if (!response.ok) {
+            return null;
+          }
+          return response.json();
+        })
+        .then(function (payload) {
+          if (thisRequest !== requestId) return;
+          var cities = payload && Array.isArray(payload.cities) ? payload.cities : [];
+          setCityOptions(cities);
+        })
+        .catch(function () {
+          if (thisRequest !== requestId) return;
+          setCityOptions([]);
+        });
+    }
+
+    function queueLoadCities() {
+      if (timerId) {
+        clearTimeout(timerId);
+      }
+      timerId = setTimeout(loadCities, 180);
+    }
+
+    stateInput.addEventListener("input", queueLoadCities);
+    stateInput.addEventListener("change", queueLoadCities);
+    stateInput.addEventListener("blur", queueLoadCities);
+    cityInput.addEventListener("input", queueLoadCities);
+    cityInput.addEventListener("focus", queueLoadCities);
+  })();
+</script>
+{% endblock %}

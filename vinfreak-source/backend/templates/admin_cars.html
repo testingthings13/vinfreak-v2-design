@@ -1,0 +1,217 @@
+{% extends "_base.html" %}
+{% block content %}
+{% set perms = request.session.get('permissions') or [] %}
+{% set is_super = request.session.get('is_superadmin') %}
+{% set dealership_query = 'unassigned' if dealership_scope == 'unassigned' else (dealership_id if dealership_id is not none else '') %}
+{% set req_url = request.url if request is defined and request.url is defined else none %}
+{% set return_to = (req_url.path ~ ('?' ~ req_url.query if req_url.query else '')) if req_url else '/admin/cars' %}
+
+<section class="page-header">
+  <div>
+    <h1>Inventory</h1>
+    <p class="muted">Search, curate and export the vehicles flowing through the marketplace.</p>
+  </div>
+  <span class="tag">{{ total }} vehicles</span>
+</section>
+
+<section class="admin-section">
+  <article class="card-panel">
+    <header class="card-panel__header">
+      <div>
+        <h2>Filter &amp; manage</h2>
+        <p class="muted small">Dial in results, adjust listings in bulk and jump into detailed editing.</p>
+      </div>
+    </header>
+    <div class="card-panel__body">
+      <div class="tabs">
+        <a href="/admin/cars" class="{{ 'active' if dealership_scope == 'all' else '' }}">All</a>
+        <a href="/admin/cars?dealership_id=unassigned" class="{{ 'active' if dealership_scope == 'unassigned' else '' }}">Unassigned</a>
+        {% for d in dealerships %}
+        <a href="/admin/cars?dealership_id={{ d.id }}" class="{{ 'active' if dealership_scope == d.id|string else '' }}">{{ d.name }}</a>
+        {% endfor %}
+      </div>
+
+      <form class="form elevated" method="get" action="/admin/cars">
+        <input type="hidden" name="dealership_id" value="{{ dealership_query }}">
+        <div class="form-grid three">
+          <label>
+            <span>Search</span>
+            <input type="text" name="q" value="{{ q or '' }}" placeholder="VIN, make, model or title">
+          </label>
+          <label>
+            <span>Source</span>
+            <input type="text" name="source" value="{{ source or '' }}" placeholder="facebook_marketplace">
+          </label>
+          <label>
+            <span>Make</span>
+            <select name="make_id">
+              <option value="">All makes</option>
+              {% for m in makes %}
+              <option value="{{ m.id }}" {{ 'selected' if make_id==m.id else '' }}>{{ m.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            <span>Model</span>
+            <select name="model_id">
+              <option value="">All models</option>
+              {% for m in models %}
+              <option value="{{ m.id }}" {{ 'selected' if model_id==m.id else '' }}>{{ m.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            <span>Category</span>
+            <select name="category_id">
+              <option value="">All categories</option>
+              {% for c in categories %}
+              <option value="{{ c.id }}" {{ 'selected' if category_id==c.id else '' }}>{{ c.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            <span>Status</span>
+            <select name="status">
+              <option value="">Any status</option>
+              {% for s in ['LIVE','AUCTION_IN_PROGRESS','SOLD','REMOVED'] %}
+              <option value="{{ s }}" {{ 'selected' if status==s else '' }}>{{ s }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            <span>Year minimum</span>
+            <input type="number" name="year_min" value="{{ year_min if year_min is not none else '' }}" placeholder="Year >=">
+          </label>
+          <label>
+            <span>Year maximum</span>
+            <input type="number" name="year_max" value="{{ year_max if year_max is not none else '' }}" placeholder="Year <=">
+          </label>
+          <label>
+            <span>Sort by</span>
+            <select name="sort">
+              {% for s in ['posted_at','updated_at','id','price','year','mileage','make','model'] %}
+              <option value="{{ s }}" {{ 'selected' if sort==s else '' }}>{{ s|replace('_',' ')|title }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            <span>Per page</span>
+            <select name="per">
+              {% for p in [25,50,100] %}
+              <option value="{{ p }}" {{ 'selected' if per==p else '' }}>{{ p }} / page</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <div class="form-actions inline-start">
+          <button type="submit" class="button primary">Apply filters</button>
+        </div>
+      </form>
+
+      <div class="form-actions inline-start">
+        {% if is_super or 'cars' in perms %}<a class="button primary" href="/admin/cars/new">+ New Car</a>{% endif %}
+        {% if is_super or 'manual' in perms %}
+        <a class="button" href="/admin/cars/manual">Manual Add</a>
+        {% endif %}
+        <a class="button" href="/admin/cars/export?fmt=csv">Export CSV</a>
+        <a class="button" href="/admin/cars/export?fmt=json">Export JSON</a>
+      </div>
+
+      <form class="form compact" action="/admin/cars/bulk" method="post">
+        <input type="hidden" name="csrf" value="{{ csrf_token(request) }}">
+        <input type="hidden" name="ids" id="bulk_ids" value="">
+        <div class="form-row">
+          <label>
+            <span class="muted small">Bulk action</span>
+            <select name="action">
+              <option value="delete">Soft Delete</option>
+              {% for s in ['LIVE','AUCTION_IN_PROGRESS','SOLD','REMOVED'] %}
+              <option value="{{ s }}">Set Status: {{ s }}</option>
+              {% endfor %}
+              <option value="set_dealership">Set Dealership</option>
+            </select>
+          </label>
+          <label>
+            <span class="muted small">Dealership</span>
+            <select name="dealership_id">
+              <option value="">-- choose dealership --</option>
+              {% for d in dealerships %}
+              <option value="{{ d.id }}">{{ d.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <div class="form-actions inline-start">
+          <button type="submit" class="button">Apply to selected</button>
+        </div>
+      </form>
+
+      <div class="table-card">
+        <div class="table-card__body">
+          <table class="table">
+            <thead>
+              <tr>
+                <th><input type="checkbox" id="chk_all" onclick="toggleAll(this)"></th>
+                <th>Thumb</th>
+                <th>Title</th>
+                <th>VIN</th>
+                <th>Year</th>
+                <th>Price</th>
+                <th>Status</th>
+                <th>Source</th>
+                <th>Dealership</th>
+                <th>Updated</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in cars %}
+              <tr>
+                <td><input type="checkbox" class="rowchk" value="{{ c.id }}" onchange="collectBulk()"></td>
+                <td>{% if c.image_url %}<img src="{{ c.image_url if c.image_url.startswith('http') or c.image_url.startswith('/') else '/' ~ c.image_url.lstrip('/') }}" alt="" style="height:36px;width:60px;object-fit:cover;border-radius:6px">{% endif %}</td>
+                <td>
+                  {% if c.url %}<a href="{{ c.url }}" target="_blank" rel="noopener noreferrer">{% endif %}
+                  {{ c.title or (c.year ~ ' ' ~ (c.make or '') ~ ' ' ~ (c.model or '')) }}
+                  {% if c.url %}</a>{% endif %}
+                </td>
+                <td>{{ c.vin or '' }}</td>
+                <td>{{ c.year or '' }}</td>
+                <td>{{ (("{:,.0f}".format(c.price)) if c.price else "") ~ " " ~ (c.currency or "") }}</td>
+                <td>{{ c.auction_status or '' }}</td>
+                <td>{{ c.source or '' }}</td>
+                <td>{% if c.dealership_name %}<span class="badge dealership">{{ c.dealership_name }}</span>{% endif %}</td>
+                <td>{{ c.updated_at or '' }}</td>
+                <td class="actions">
+                  <a href="/admin/cars/{{ c.id }}">Edit</a>
+                  <form method="post" action="/admin/cars/{{ c.id }}/delete" class="inline" onsubmit="return confirm('Permanently delete this car? This cannot be undone.');">
+                    <input type="hidden" name="csrf" value="{{ csrf_token(request) }}">
+                    <input type="hidden" name="return_to" value="{{ return_to }}">
+                    <button
+                      type="submit"
+                      class="button danger small icon-only"
+                      title="Permanently delete"
+                      aria-label="Permanently delete"
+                    >&#128465;</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="pager">
+        {% if page>1 %}<a href="?page={{ page-1 }}&per={{ per }}&q={{ q }}&source={{ source }}&make_id={{ make_id }}&model_id={{ model_id }}&category_id={{ category_id }}&status={{ status }}&year_min={{ year_min }}&year_max={{ year_max }}&dealership_id={{ dealership_query }}&sort={{ sort }}">&lt;&lt; Prev</a>{% endif %}
+        <span>Page {{ page }} / {{ last_page }} ({{ total }} items)</span>
+        {% if page<last_page %}<a href="?page={{ page+1 }}&per={{ per }}&q={{ q }}&source={{ source }}&make_id={{ make_id }}&model_id={{ model_id }}&category_id={{ category_id }}&status={{ status }}&year_min={{ year_min }}&year_max={{ year_max }}&dealership_id={{ dealership_query }}&sort={{ sort }}">Next &gt;&gt;</a>{% endif %}
+      </div>
+    </div>
+  </article>
+</section>
+
+<script>
+function toggleAll(el){ document.querySelectorAll('.rowchk').forEach(c=> c.checked=el.checked); collectBulk(); }
+function collectBulk(){ const ids=[...document.querySelectorAll('.rowchk:checked')].map(e=>e.value); document.getElementById('bulk_ids').value=ids.join(','); }
+</script>
+{% endblock %}

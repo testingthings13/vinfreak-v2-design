@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ meta.page_title }}</title>
+  <link rel="canonical" href="{{ meta.canonical_url or meta.url }}">
+  <meta name="description" content="{{ meta.description }}">
+  {% if meta.robots %}
+  <meta name="robots" content="{{ meta.robots }}">
+  {% endif %}
+  <meta property="og:type" content="{{ meta.og_type }}">
+  <meta property="og:title" content="{{ meta.title }}">
+  <meta property="og:description" content="{{ meta.description }}">
+  <meta property="og:url" content="{{ meta.url }}">
+  <meta property="og:site_name" content="{{ meta.site_name }}">
+  {% if meta.image %}
+  <meta property="og:image" content="{{ meta.image }}">
+  <meta property="og:image:alt" content="{{ meta.image_alt }}">
+  {% endif %}
+  {% if meta.published_time %}
+  <meta property="article:published_time" content="{{ meta.published_time }}">
+  {% endif %}
+  {% if meta.modified_time %}
+  <meta property="article:modified_time" content="{{ meta.modified_time }}">
+  {% endif %}
+  <meta name="twitter:card" content="{{ meta.twitter_card }}">
+  <meta name="twitter:title" content="{{ meta.title }}">
+  <meta name="twitter:description" content="{{ meta.description }}">
+  {% if meta.image %}
+  <meta name="twitter:image" content="{{ meta.image }}">
+  {% if meta.twitter_image_alt %}
+  <meta name="twitter:image:alt" content="{{ meta.twitter_image_alt }}">
+  {% endif %}
+  {% endif %}
+  <style>
+    :root {
+      color-scheme: dark light;
+    }
+    body {
+      margin: 0;
+      font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: radial-gradient(circle at top, #111827 0%, #060b18 60%, #010409 100%);
+      color: #f9fafb;
+      min-height: 100vh;
+      padding: 24px 12px 56px;
+      box-sizing: border-box;
+    }
+    .share-page {
+      width: min(980px, 100%);
+      margin: 0 auto;
+      min-height: calc(100vh + 260px);
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .share-logo {
+      display: inline-flex;
+      align-self: center;
+      border-radius: 999px;
+      text-decoration: none;
+      padding: 6px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      background: rgba(15, 23, 42, 0.6);
+      box-shadow: 0 10px 30px rgba(2, 6, 23, 0.45);
+    }
+    .share-logo img {
+      display: block;
+      object-fit: contain;
+      border-radius: 999px;
+    }
+    .share-shell {
+      width: 100%;
+      background: rgba(15, 23, 42, 0.92);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 20px;
+      box-shadow: 0 30px 60px rgba(15, 23, 42, 0.55);
+      overflow: hidden;
+      backdrop-filter: blur(14px);
+    }
+    header {
+      padding: 28px clamp(20px, 5vw, 48px) 16px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+    }
+    .eyebrow {
+      font-size: 0.75rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: rgba(148, 163, 184, 0.7);
+      margin-bottom: 8px;
+      display: inline-block;
+    }
+    h1 {
+      font-size: clamp(1.8rem, 3vw, 2.4rem);
+      margin: 0 0 12px;
+      line-height: 1.1;
+      color: #f8fafc;
+    }
+    .summary {
+      margin: 0 0 20px;
+      color: rgba(226, 232, 240, 0.82);
+      font-size: 1rem;
+      max-width: 52ch;
+    }
+    .cta-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+    }
+    .cta {
+      background: linear-gradient(135deg, #22d3ee, #0ea5e9);
+      color: #020617;
+      font-weight: 600;
+      text-decoration: none;
+      padding: 10px 20px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .cta:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 30px rgba(34, 211, 238, 0.32);
+    }
+    .cta.secondary {
+      background: transparent;
+      color: rgba(226, 232, 240, 0.86);
+      border: 1px solid rgba(148, 163, 184, 0.35);
+    }
+    .preview {
+      display: grid;
+      grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+      gap: 0;
+    }
+    .preview__media {
+      position: relative;
+      overflow: hidden;
+      aspect-ratio: 3 / 2;
+      background: rgba(15, 23, 42, 0.6);
+    }
+    .preview__media img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .preview__fallback {
+      display: grid;
+      place-items: center;
+      height: 100%;
+      color: rgba(148, 163, 184, 0.7);
+      font-size: 0.95rem;
+      padding: 24px;
+      text-align: center;
+    }
+    .preview__details {
+      padding: clamp(20px, 4vw, 36px);
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      background: rgba(2, 6, 23, 0.65);
+    }
+    .price {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: #22d3ee;
+    }
+    .location {
+      font-size: 0.95rem;
+      color: rgba(226, 232, 240, 0.7);
+    }
+    .spec-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 12px;
+    }
+    .spec-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+      padding-bottom: 10px;
+    }
+    .spec-item:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+    .spec-item span:first-child {
+      color: rgba(148, 163, 184, 0.75);
+      font-size: 0.85rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .spec-item span:last-child {
+      font-weight: 500;
+      color: #f1f5f9;
+      text-align: right;
+    }
+    .scroll-hint {
+      margin: 0;
+      padding: 12px 18px 18px;
+      text-align: center;
+      color: rgba(148, 163, 184, 0.92);
+      letter-spacing: 0.08em;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+    }
+    .share-handoff {
+      min-height: 220px;
+      border-radius: 18px;
+      border: 1px dashed rgba(148, 163, 184, 0.35);
+      background:
+        radial-gradient(80% 110% at 50% 0%, rgba(56, 189, 248, 0.18), rgba(56, 189, 248, 0) 70%),
+        linear-gradient(180deg, rgba(10, 15, 27, 0.18), rgba(10, 15, 27, 0.68));
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+    .share-handoff span {
+      color: rgba(148, 163, 184, 0.9);
+      font-size: 0.85rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    @media (max-width: 860px) {
+      body {
+        padding: 16px 8px 44px;
+      }
+      .share-page {
+        min-height: calc(100vh + 220px);
+      }
+      .share-shell {
+        border-radius: 16px;
+      }
+      .preview {
+        grid-template-columns: 1fr;
+      }
+      .preview__media {
+        aspect-ratio: 16 / 9;
+      }
+      .cta {
+        width: 100%;
+        justify-content: center;
+      }
+    }
+    @media (prefers-color-scheme: light) {
+      body {
+        background: radial-gradient(circle at top, #f8fafc 0%, #e2e8f0 60%, #cbd5f5 100%);
+        color: #0f172a;
+      }
+      .share-logo {
+        background: rgba(255, 255, 255, 0.88);
+        border-color: rgba(15, 23, 42, 0.12);
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+      }
+      .share-shell {
+        background: rgba(255, 255, 255, 0.92);
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.12);
+      }
+      header {
+        border-color: rgba(15, 23, 42, 0.08);
+      }
+      .summary {
+        color: rgba(15, 23, 42, 0.72);
+      }
+      .cta.secondary {
+        color: rgba(15, 23, 42, 0.72);
+        border-color: rgba(15, 23, 42, 0.15);
+      }
+      .preview__details {
+        background: rgba(241, 245, 249, 0.75);
+      }
+      .location {
+        color: rgba(15, 23, 42, 0.62);
+      }
+      .spec-item span:first-child {
+        color: rgba(30, 41, 59, 0.6);
+      }
+      .spec-item span:last-child {
+        color: #0f172a;
+      }
+      .scroll-hint {
+        color: rgba(51, 65, 85, 0.9);
+      }
+      .share-handoff {
+        border-color: rgba(15, 23, 42, 0.18);
+        background:
+          radial-gradient(80% 110% at 50% 0%, rgba(56, 189, 248, 0.22), rgba(56, 189, 248, 0) 70%),
+          linear-gradient(180deg, rgba(241, 245, 249, 0.9), rgba(226, 232, 240, 0.78));
+      }
+      .share-handoff span {
+        color: rgba(71, 85, 105, 0.92);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="share-page">
+    {% if site_logo_url %}
+    <a class="share-logo" href="{{ site_home_url }}" aria-label="Go to {{ site_title }} home">
+      <img
+        src="{{ site_logo_url }}"
+        alt="{{ site_title }} logo"
+        width="{{ site_logo_width }}"
+        height="{{ site_logo_height }}"
+      >
+    </a>
+    {% endif %}
+    <div class="share-shell">
+      <header>
+        <span class="eyebrow">Shared from {{ site_title }}</span>
+        <h1>{{ car.title }}</h1>
+        {% if car.summary %}
+        <p class="summary">{{ car.summary }}</p>
+        {% endif %}
+        <div class="cta-group">
+          <a class="cta" href="{{ marketplace_page2_url }}" aria-label="Continue to {{ site_title }} marketplace">
+            <span aria-hidden="true">&gt;</span>
+            <span>Continue to marketplace</span>
+          </a>
+          {% if car.detail_url %}
+          <a class="cta secondary" href="{{ car.detail_url }}">View listing details</a>
+          {% endif %}
+          {% if car.source_url %}
+          <a class="cta secondary" href="{{ car.source_url }}" rel="noopener" target="_blank">Original listing</a>
+          {% endif %}
+        </div>
+      </header>
+      <section class="preview" aria-labelledby="preview-heading">
+        <div class="preview__media">
+          {% if car.image_url %}
+          <img src="{{ car.image_url }}" alt="{{ car.image_alt }}">
+          {% else %}
+          <div class="preview__fallback">Photos for this listing will appear soon.</div>
+          {% endif %}
+        </div>
+        <div class="preview__details">
+          {% if car.price_display %}
+          <div class="price">{{ car.price_display }}</div>
+          {% endif %}
+          {% if car.location %}
+          <div class="location">{{ car.location }}</div>
+          {% endif %}
+          {% if car.specs %}
+          <ul class="spec-list">
+            {% for spec in car.specs %}
+            <li class="spec-item">
+              <span>{{ spec.label }}</span>
+              <span>{{ spec.value }}</span>
+            </li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+          {% if not car.available %}
+          <div class="preview__fallback">This listing is no longer available.</div>
+          {% endif %}
+        </div>
+      </section>
+      <p class="scroll-hint">Scroll down to load the full site from page 2.</p>
+    </div>
+    <div class="share-handoff" id="share-handoff" aria-hidden="true">
+      <span>Keep scrolling to enter the marketplace</span>
+    </div>
+  </div>
+  <script>
+    (function () {
+      var target = {{ (frontend_share_handoff_url or frontend_share_url) | tojson }};
+      if (!target) return;
+
+      var ua = (navigator.userAgent || "").toLowerCase();
+      var isBot = /(bot|crawl|spider|slurp|facebookexternalhit|twitterbot|linkedinbot|whatsapp|slackbot|discordbot|telegrambot|pinterest|embedly)/.test(ua);
+      if (isBot) return;
+
+      var params = new URLSearchParams(window.location.search || "");
+      if (params.get("preview") === "1") return;
+
+      var currentUrl;
+      var targetUrl;
+      try {
+        currentUrl = new URL(window.location.href);
+        targetUrl = new URL(target, currentUrl.href);
+      } catch (error) {
+        return;
+      }
+
+      if (currentUrl.href === targetUrl.href) return;
+      window.location.replace(targetUrl.href);
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <meta
+      name="description"
+      content="VINFREAK indexes enthusiast cars and live auctions in one place. Browse by make, compare listings, and discover performance-focused inventory."
+    />
+    <meta
+      name="robots"
+      content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"
+    />
+    <link rel="canonical" href="https://vinfreak.com/" />
+    <meta name="theme-color" content="#0B1020" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="VINFREAK" />
+    <meta property="og:title" content="VINFREAK | Performance Cars and Auctions" />
+    <meta
+      property="og:description"
+      content="Browse enthusiast inventory, live auctions, and dealer listings across premium car brands."
+    />
+    <meta property="og:url" content="https://vinfreak.com/" />
+    <meta
+      property="og:image"
+      content="https://cdn.vinfreak.com/branding/QtLmCMtkDhlgVV20aMm8rA.jpg"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="VINFREAK | Performance Cars and Auctions" />
+    <meta
+      name="twitter:description"
+      content="Browse enthusiast inventory, live auctions, and dealer listings across premium car brands."
+    />
+    <meta
+      name="twitter:image"
+      content="https://cdn.vinfreak.com/branding/QtLmCMtkDhlgVV20aMm8rA.jpg"
+    />
+    <link
+      rel="icon"
+      type="image/jpeg"
+      href="https://cdn.vinfreak.com/branding/QtLmCMtkDhlgVV20aMm8rA.jpg"
+    />
+    <link
+      rel="shortcut icon"
+      href="https://cdn.vinfreak.com/branding/QtLmCMtkDhlgVV20aMm8rA.jpg"
+    />
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="https://cdn.vinfreak.com/branding/QtLmCMtkDhlgVV20aMm8rA.jpg"
+    />
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-W2BJHB3R28"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag("js", new Date());
+
+      gtag("config", "G-W2BJHB3R28");
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "@id": "https://vinfreak.com/#website",
+            "url": "https://vinfreak.com/",
+            "name": "VINFREAK",
+            "potentialAction": {
+              "@type": "SearchAction",
+              "target": "https://vinfreak.com/?q={search_term_string}",
+              "query-input": "required name=search_term_string"
+            }
+          },
+          {
+            "@type": "Organization",
+            "@id": "https://vinfreak.com/#organization",
+            "name": "VINFREAK",
+            "url": "https://vinfreak.com/",
+            "logo": "https://cdn.vinfreak.com/branding/QtLmCMtkDhlgVV20aMm8rA.jpg"
+          }
+        ]
+      }
+    </script>
+    <title>VINFREAK</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      (function restoreClientRoute() {
+        var STORAGE_KEY = "vinfreak:last-path";
+        try {
+          var fullPath = window.location.pathname + window.location.search + window.location.hash;
+          if (window.location.pathname === "/index.html") {
+            var saved = sessionStorage.getItem(STORAGE_KEY);
+            if (saved && saved.charAt(0) === "/") {
+              fullPath = saved;
+              window.history.replaceState(null, "", saved);
+            } else {
+              fullPath = "/";
+              window.history.replaceState(null, "", "/");
+            }
+          }
+          sessionStorage.setItem(STORAGE_KEY, fullPath);
+        } catch (error) {
+          if (typeof console !== "undefined" && typeof console.warn === "function") {
+            console.warn("Route restore failed", error);
+          }
+        }
+      })();
+    </script>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
