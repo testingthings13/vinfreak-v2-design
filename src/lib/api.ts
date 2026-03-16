@@ -1,4 +1,4 @@
-const API_BASE = "https://api.vinfreak.com";
+const API_BASE = (import.meta.env.VITE_API_BASE || "https://api.vinfreak.com").replace(/\/+$/, "");
 const API_PREFIX = "/api";
 
 function buildHeaders(extra: Record<string, string> = {}): Record<string, string> {
