@@ -1,18 +1,21 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import Layout from "@/components/Layout";
 import CarCard from "@/components/CarCard";
+import CarCardSkeleton from "@/components/CarCardSkeleton";
 import FilterPanel from "@/components/FilterPanel";
+import DiscoverDrawer from "@/components/DiscoverDrawer";
+import Footer from "@/components/Footer";
+import ScrollToTop from "@/components/ScrollToTop";
 import { getCars } from "@/lib/api";
 import { normalizeCar } from "@/lib/normalizeCar";
-import { mockCars } from "@/data/mockCars";
+
 import { useSearchFilters } from "@/hooks/useSearchFilters";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import {
   TrendingUp, Car as CarIcon, Gavel, Gamepad2,
-  SlidersHorizontal, ChevronDown, ChevronLeft, ChevronRight,
+  SlidersHorizontal, ChevronDown,
   Loader2, ArrowUpDown, ArrowDown, ArrowUp, Calendar,
   Gauge, X, MapPin, Clock, Search,
 } from "lucide-react";
@@ -38,15 +41,26 @@ const sortOptions = [
 export default function Index() {
   const { filters, setFilters, clearFilters, hasActiveFilters } = useSearchFilters();
   const [showSort, setShowSort] = useState(false);
-  const { coords: geoCoords, loading: geoLoading, error: geoError, requestLocation } = useGeolocation();
+  const { coords: geoCoords, loading: geoLoading, error: geoError, zipMode, requestLocation, setFromZip } = useGeolocation();
+  const [zipInput, setZipInput] = useState("");
+
+  // Sticky search state
+  const [scrolledPastHero, setScrolledPastHero] = useState(false);
+  const heroRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const onScroll = () => {
+      const heroBottom = heroRef.current?.getBoundingClientRect().bottom ?? 0;
+      setScrolledPastHero(heroBottom < 56); // 56 = header height
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   const PAGE_SIZE = 24;
   const sort = filters.sort || "relevance";
-  const page = filters.page || 1;
   const debouncedFilters = useDebounce(filters, 400);
-  const debouncedPage = debouncedFilters.page || 1;
 
-  // Auto-request geolocation when user selects "nearest"
   useEffect(() => {
     if (sort === "nearest" && !geoCoords && !geoLoading) {
       requestLocation();
@@ -58,12 +72,17 @@ export default function Index() {
     [debouncedFilters, geoCoords]
   );
 
-  const { data: apiResult, isLoading, isError } = useQuery({
+  const {
+    data,
+    isLoading,
+    isError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey,
-    queryFn: ({ signal }) => {
+    queryFn: ({ signal, pageParam = 1 }) => {
       const rawSort = debouncedFilters.sort || "relevance";
-
-      // Map UI sort values to API sort + source params (matching V1 behavior)
       let apiSort = rawSort;
       let apiSource = debouncedFilters.source;
       let lat: number | undefined;
@@ -82,7 +101,6 @@ export default function Index() {
           lat = geoCoords.lat;
           lng = geoCoords.lng;
         } else {
-          // No coords yet, fall back to recent
           apiSort = "recent";
         }
       }
@@ -103,32 +121,29 @@ export default function Index() {
           lat,
           lng,
         },
-        { page: debouncedPage, pageSize: PAGE_SIZE },
+        { page: pageParam as number, pageSize: PAGE_SIZE },
         signal
       );
     },
+    getNextPageParam: (lastPage, allPages) => {
+      if (!lastPage) return undefined;
+      const loaded = allPages.length * PAGE_SIZE;
+      return loaded < (lastPage.total ?? 0) ? allPages.length + 1 : undefined;
+    },
+    initialPageParam: 1,
     staleTime: 60000,
     retry: 1,
-    // Don't fetch nearest until we have coords
-    enabled: sort !== "nearest" || !!geoCoords,
+    enabled: true,
   });
 
-  const rawCars = apiResult
-    ? apiResult.items.map((r: any) => normalizeCar(r))
-    : (isError ? mockCars.map((r: any) => normalizeCar(r)) : []);
+  const rawCars = useMemo(() => {
+    if (!data) return [];
+    return data.pages.flatMap((page) => page.items.map((r: any) => normalizeCar(r)));
+  }, [data]);
 
-  const totalCount = apiResult?.total ?? rawCars.length;
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-  const liveAuctionCount = rawCars.filter((c: any) => c.auctionStatus === "AUCTION_IN_PROGRESS").length;
+  const totalCount = data?.pages[0]?.total ?? rawCars.length;
   const currentSort = sortOptions.find(s => s.value === sort);
 
-  const goToPage = useCallback((p: number) => {
-    const clamped = Math.max(1, Math.min(p, totalPages));
-    setFilters({ page: clamped === 1 ? undefined : clamped });
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }, [totalPages, setFilters]);
-
-  // Active filter summary chips
   const filterSummary = useMemo(() => {
     const chips: { key: string; label: string }[] = [];
     if (filters.q) chips.push({ key: "q", label: `"${filters.q}"` });
@@ -152,47 +167,64 @@ export default function Index() {
   };
 
   const [heroSearch, setHeroSearch] = useState(filters.q || "");
+  const [stickySearch, setStickySearch] = useState(filters.q || "");
 
   const handleHeroSearch = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     setFilters({ q: heroSearch.trim() || undefined, page: undefined });
+    setStickySearch(heroSearch);
   }, [heroSearch, setFilters]);
+
+  const handleStickySearch = useCallback((e: React.FormEvent) => {
+    e.preventDefault();
+    setFilters({ q: stickySearch.trim() || undefined, page: undefined });
+    setHeroSearch(stickySearch);
+  }, [stickySearch, setFilters]);
+
 
   return (
     <Layout>
       {/* ── HERO ── */}
-      <section className="relative overflow-hidden">
+      <section ref={heroRef} className="relative overflow-hidden">
+        {/* Background with parallax-style layering */}
         <div className="absolute inset-0">
-          <img src={heroBg} alt="" className="w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/60 to-black/80" />
+          <img src={heroBg} alt="" className="w-full h-full object-cover scale-105" />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/50 to-background" />
         </div>
 
-        <div className="relative z-10 container py-14 md:py-20 flex flex-col items-center text-center gap-5">
-          <img
-            src="https://cdn.vinfreak.com/branding/VCzgNThhX13rCP1Yu8pTwg.png"
-            alt="VINFREAK"
-            className="h-24 md:h-32 w-auto object-contain drop-shadow-2xl"
-          />
-
-          <div className="max-w-2xl space-y-2">
-            <h1 className="text-2xl md:text-4xl font-extrabold tracking-tight text-white drop-shadow-lg">
-              Find Your Next Exotic
-            </h1>
-            <p className="text-white/70 text-sm md:text-base font-medium">
-              AI-powered search across auctions, dealers & marketplaces worldwide
-            </p>
+        <div className="relative z-10 container py-10 md:py-14 flex flex-col items-center text-center gap-6">
+          {/* Logo + wordmark */}
+          <div className="flex flex-col items-center gap-4">
+            <img
+              src="https://cdn.vinfreak.com/branding/VCzgNThhX13rCP1Yu8pTwg.png"
+              alt="VINFREAK"
+              className="h-28 md:h-36 lg:h-44 w-auto object-contain mix-blend-lighten drop-shadow-[0_8px_32px_rgba(0,0,0,0.4)]"
+            />
+            <div className="flex items-center gap-3">
+              <div className="h-px w-10 bg-gradient-to-r from-transparent to-white/30" />
+              <span className="text-[10px] md:text-xs font-semibold uppercase tracking-[0.35em] text-white/50">
+                Exotic Car Intelligence
+              </span>
+              <div className="h-px w-10 bg-gradient-to-l from-transparent to-white/30" />
+            </div>
           </div>
 
-          {/* Search bar */}
-          <form onSubmit={handleHeroSearch} className="w-full max-w-xl">
+          {/* Headline */}
+          <h1 className="text-xl md:text-2xl font-bold tracking-tight text-white/90 max-w-lg leading-snug">
+            Find, compare & track exotics across{" "}
+            <span className="text-primary">every marketplace</span>
+          </h1>
+
+          {/* Search */}
+          <form onSubmit={handleHeroSearch} className="w-full max-w-lg">
             <div className="relative group">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40 group-focus-within:text-primary transition-colors" />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30 group-focus-within:text-primary transition-colors" />
               <input
                 type="text"
                 value={heroSearch}
                 onChange={(e) => setHeroSearch(e.target.value)}
                 placeholder="Search make, model, year..."
-                className="w-full pl-11 pr-24 py-3 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 text-white text-sm placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/40 focus:bg-white/15 transition-all shadow-xl"
+                className="w-full pl-11 pr-24 py-3 rounded-xl bg-white/8 backdrop-blur-xl border border-white/10 text-white text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/30 focus:bg-white/12 transition-all shadow-2xl"
                 maxLength={100}
               />
               <button
@@ -203,15 +235,57 @@ export default function Index() {
               </button>
             </div>
           </form>
+
+          {/* Live stats pill */}
+          <div className="flex items-center gap-3 text-[10px] text-white/40 font-medium">
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
+              Live
+            </span>
+            <span>Auctions · Dealers · FB Marketplace · Private Sellers</span>
+          </div>
         </div>
       </section>
 
+      {/* ── DISCOVER DRAWER (Trending + Recently Viewed) ── */}
+      <DiscoverDrawer />
+
+      {/* ── STICKY SEARCH BAR ── */}
+      {scrolledPastHero && (
+        <motion.div
+          initial={{ y: -20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          className="sticky-search"
+        >
+          <div className="container py-2.5">
+            <form onSubmit={handleStickySearch} className="flex items-center gap-2 max-w-2xl mx-auto">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={stickySearch}
+                  onChange={(e) => setStickySearch(e.target.value)}
+                  placeholder="Search make, model, year..."
+                  className="w-full pl-9 pr-4 py-2 rounded-lg text-sm bg-card border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 transition-all"
+                  maxLength={100}
+                />
+              </div>
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-all"
+              >
+                Search
+              </button>
+            </form>
+          </div>
+        </motion.div>
+      )}
+
       <div className="container py-8 space-y-6">
 
-        {/* Sort + quick filters */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <SlidersHorizontal className="w-4 h-4 text-muted-foreground" />
-
+        {/* Results count */}
+        {/* Sort */}
+        <div className="flex items-center gap-2 flex-wrap overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
           <div className="relative">
             <button onClick={() => setShowSort(!showSort)} className="filter-chip flex items-center gap-1">
               <ArrowUpDown className="w-3.5 h-3.5" />
@@ -244,32 +318,41 @@ export default function Index() {
             )}
           </div>
 
-          <button
-            onClick={() => setFilters({ saleType: filters.saleType === "auction" ? undefined : "auction" })}
-            className={`filter-chip ${filters.saleType === "auction" ? "active" : ""}`}
-          >
-            <Gavel className="w-3.5 h-3.5" /> Auction
-          </button>
-          <button
-            onClick={() => setFilters({ transmission: filters.transmission === "Manual" ? undefined : "Manual" })}
-            className={`filter-chip ${filters.transmission === "Manual" ? "active" : ""}`}
-          >
-            <Gamepad2 className="w-3.5 h-3.5" /> Manual
-          </button>
-          <button
-            onClick={() => setFilters({ source: filters.source === "facebook_marketplace" ? undefined : "facebook_marketplace" })}
-            className={`filter-chip ${filters.source === "facebook_marketplace" ? "active" : ""}`}
-          >
-            <span className="w-3.5 h-3.5 rounded bg-primary text-primary-foreground text-[8px] font-bold flex items-center justify-center">F</span>
-            FB Marketplace
-          </button>
-
           {(isLoading || geoLoading) && <Loader2 className="w-4 h-4 animate-spin text-primary ml-2" />}
-          {geoLoading && sort === "nearest" && (
-            <span className="text-xs text-muted-foreground ml-1">Getting your location…</span>
-          )}
-          {geoError && sort === "nearest" && (
-            <span className="text-xs text-destructive ml-1">{geoError}</span>
+          {sort === "nearest" && (
+            <div className="w-full mt-3 rounded-lg border border-border bg-card p-3 sm:p-4">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 block">Cars near you</span>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (zipInput.trim()) setFromZip(zipInput.trim());
+                }}
+                className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2"
+              >
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={zipInput}
+                  onChange={(e) => setZipInput(e.target.value)}
+                  placeholder="Enter ZIP code"
+                  className="flex-1 px-3 py-2.5 sm:py-2 text-sm rounded-md border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  maxLength={10}
+                />
+                <button
+                  type="submit"
+                  disabled={geoLoading}
+                  className="px-4 py-2.5 sm:py-2 text-sm rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 whitespace-nowrap"
+                >
+                  {geoLoading ? "Updating…" : "Update ZIP code"}
+                </button>
+              </form>
+              {geoError && (
+                <p className="text-[11px] text-destructive mt-1.5">{geoError}</p>
+              )}
+              {!geoCoords && !geoError && !geoLoading && (
+                <p className="text-[11px] text-muted-foreground mt-1.5">Enter a ZIP to sort by distance, or browse recent listings below.</p>
+              )}
+            </div>
           )}
         </div>
 
@@ -302,11 +385,14 @@ export default function Index() {
           </div>
         )}
 
-        {/* Car grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {rawCars.map((car: any, i: number) => (
-            <CarCard key={car.id} car={car} index={i} />
-          ))}
+        {/* Car grid - show skeletons while loading */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+          {isLoading
+            ? Array.from({ length: 12 }).map((_, i) => <CarCardSkeleton key={i} />)
+            : rawCars.map((car: any, i: number) => (
+                <CarCard key={car.id} car={car} index={i} />
+              ))
+          }
         </div>
 
         {rawCars.length === 0 && !isLoading && (
@@ -316,61 +402,31 @@ export default function Index() {
           </div>
         )}
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-2 py-8">
+        {/* Load More */}
+        {hasNextPage && (
+          <div className="flex flex-col items-center gap-2 py-8">
             <button
-              onClick={() => goToPage(page - 1)}
-              disabled={page <= 1}
-              className="flex items-center gap-1 px-3 py-2 text-sm font-medium rounded-lg border border-border bg-card hover:bg-muted disabled:opacity-40 disabled:pointer-events-none transition-colors"
+              onClick={() => fetchNextPage()}
+              disabled={isFetchingNextPage}
+              className="flex items-center gap-2 px-8 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 disabled:opacity-60 transition-colors shadow-lg"
             >
-              <ChevronLeft className="w-4 h-4" /> Prev
+              {isFetchingNextPage ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+                </>
+              ) : (
+                "Load More"
+              )}
             </button>
-
-            {(() => {
-              const pages: (number | "...")[] = [];
-              if (totalPages <= 7) {
-                for (let i = 1; i <= totalPages; i++) pages.push(i);
-              } else {
-                pages.push(1);
-                if (page > 3) pages.push("...");
-                for (let i = Math.max(2, page - 1); i <= Math.min(totalPages - 1, page + 1); i++) pages.push(i);
-                if (page < totalPages - 2) pages.push("...");
-                pages.push(totalPages);
-              }
-              return pages.map((p, idx) =>
-                p === "..." ? (
-                  <span key={`e${idx}`} className="px-2 text-muted-foreground text-sm">…</span>
-                ) : (
-                  <button
-                    key={p}
-                    onClick={() => goToPage(p)}
-                    className={`w-9 h-9 rounded-lg text-sm font-medium transition-colors ${
-                      p === page
-                        ? "bg-primary text-primary-foreground"
-                        : "border border-border bg-card hover:bg-muted"
-                    }`}
-                  >
-                    {p}
-                  </button>
-                )
-              );
-            })()}
-
-            <button
-              onClick={() => goToPage(page + 1)}
-              disabled={page >= totalPages}
-              className="flex items-center gap-1 px-3 py-2 text-sm font-medium rounded-lg border border-border bg-card hover:bg-muted disabled:opacity-40 disabled:pointer-events-none transition-colors"
-            >
-              Next <ChevronRight className="w-4 h-4" />
-            </button>
-
-            <span className="ml-3 text-xs text-muted-foreground">
-              Page {page} of {totalPages} · {totalCount} results
+            <span className="text-xs text-muted-foreground">
+              {rawCars.length} of {totalCount.toLocaleString()} vehicles
             </span>
           </div>
         )}
       </div>
+
+      <Footer />
+      <ScrollToTop />
     </Layout>
   );
 }

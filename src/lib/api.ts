@@ -1,4 +1,4 @@
-const API_BASE = (import.meta.env.VITE_API_BASE || "https://api.vinfreak.com").replace(/\/+$/, "");
+export const API_BASE = "https://api.vinfreak.com";
 const API_PREFIX = "/api";
 
 function buildHeaders(extra: Record<string, string> = {}): Record<string, string> {
@@ -6,7 +6,7 @@ function buildHeaders(extra: Record<string, string> = {}): Record<string, string
   return headers;
 }
 
-async function getJSON<T = any>(path: string, timeoutMs = 12000): Promise<T> {
+export async function getJSON<T = any>(path: string, timeoutMs = 12000): Promise<T> {
   const normalized = path.startsWith("/") ? path : `/${path}`;
   const fullPath = normalized.startsWith(API_PREFIX) ? normalized : `${API_PREFIX}${normalized}`;
   const url = `${API_BASE}${fullPath}`;
@@ -25,7 +25,7 @@ async function getJSON<T = any>(path: string, timeoutMs = 12000): Promise<T> {
   }
 }
 
-async function postJSON<T = any>(path: string, body: any = {}, timeoutMs = 15000): Promise<T> {
+export async function postJSON<T = any>(path: string, body: any = {}, timeoutMs = 15000): Promise<T> {
   const normalized = path.startsWith("/") ? path : `/${path}`;
   const fullPath = normalized.startsWith(API_PREFIX) ? normalized : `${API_PREFIX}${normalized}`;
   const url = `${API_BASE}${fullPath}`;
@@ -56,38 +56,16 @@ export function getSettings() {
   return getJSON("/public/settings");
 }
 
+export function verifySitePassword(password: string) {
+  return postJSON("/public/site-password", { password });
+}
+
 export function getDealerships() {
   return getJSON("/dealerships");
 }
 
 export function getMakes() {
   return getJSON("/makes");
-}
-
-export interface FetchListingsParams {
-  sort?: string;
-  saleType?: string;
-  limit?: number;
-  offset?: number;
-  lat?: number | null;
-  lon?: number | null;
-  [key: string]: any;
-}
-
-export async function fetchListings(params: FetchListingsParams = {}) {
-  const { sort = "recent", saleType, limit = 50, offset = 0, lat, lon, ...extras } = params;
-  const search = new URLSearchParams();
-  search.set("sort", sort);
-  if (limit != null) search.set("limit", String(limit));
-  if (offset != null) search.set("offset", String(offset));
-  if (saleType) search.set("type", saleType);
-  if (lat != null) search.set("lat", String(lat));
-  if (lon != null) search.set("lon", String(lon));
-  for (const [key, value] of Object.entries(extras)) {
-    if (value != null && value !== "") search.set(key, String(value));
-  }
-  const basePath = sort === "nearest" ? "/listings" : "/cars";
-  return getJSON(`${basePath}?${search.toString()}`);
 }
 
 export interface GetCarsFilters {
@@ -192,4 +170,8 @@ export function lookupZip(zip: string) {
 export function lookupIp(ip?: string) {
   const path = ip ? `/geo/ip?ip=${encodeURIComponent(ip)}` : "/geo/ip";
   return getJSON(path);
+}
+
+export function getAdminSessionStatus() {
+  return getJSON("/admin/session-status").catch(() => null);
 }

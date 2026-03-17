@@ -1,60 +1,70 @@
 import { useParams, Link } from "react-router-dom";
+import coachAvatar from "@/assets/freakcoach-avatar.png";
 import { useQuery } from "@tanstack/react-query";
-import { getCarById, getComments } from "@/lib/api";
-import { mockCars, formatPrice, sourceLabels, timeAgo, formatCountdown } from "@/data/mockCars";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { getCarById } from "@/lib/api";
+import { normalizeCar, formatPrice, formatMileage, getSourceLabel } from "@/lib/normalizeCar";
 import Layout from "@/components/Layout";
-import { ArrowLeft, ExternalLink, Bookmark, Share2, MapPin, Clock, ThumbsUp, MessageCircle, Calendar, Gauge, Settings, Palette, Sparkles, Loader2 } from "lucide-react";
+import Gallery from "@/components/Gallery";
+import SpecGrid from "@/components/SpecGrid";
+import DetailSections from "@/components/DetailSections";
+import CommentsModal from "@/components/CommentsModal";
+import FreakStatsModal from "@/components/FreakStatsModal";
+import AskSellerModal from "@/components/AskSellerModal";
+import WouldYouBuyPoll from "@/components/WouldYouBuyPoll";
+import FreakScoreBadge from "@/components/FreakScoreBadge";
+import NegotiationCoachModal from "@/components/NegotiationCoachModal";
+import SimilarCars from "@/components/SimilarCars";
+import { useCarLike } from "@/hooks/useCarLike";
+import { useShare } from "@/hooks/useShare";
+import { useCommentCount } from "@/hooks/useCommentCount";
+import { useRecentlyViewed } from "@/hooks/useRecentlyViewed";
+import { useCountdown } from "@/hooks/useCountdown";
+import {
+  ArrowLeft, ExternalLink, MapPin, Clock, ThumbsUp, MessageCircle,
+  Share2, Sparkles, Loader2, Mail, DollarSign,
+} from "lucide-react";
 import { motion } from "framer-motion";
-import { useState } from "react";
-
-function normalizeCar(raw: any) {
-  return {
-    id: String(raw.id),
-    title: raw.title || `${raw.year || ""} ${raw.make || ""} ${raw.model || ""}`.trim(),
-    make: raw.make || "",
-    model: raw.model || "",
-    year: raw.year || 0,
-    price: raw.price ?? null,
-    currency: raw.currency || "USD",
-    mileage: raw.mileage ?? null,
-    transmission: raw.transmission || "",
-    exterior_color: raw.exterior_color || raw.color || "",
-    engine: raw.engine || "",
-    vin: raw.vin || "",
-    source: raw.source || "",
-    url: raw.url || "#",
-    image_url: raw.image_url || raw.images?.[0] || "",
-    images: raw.images || (raw.image_url ? [raw.image_url] : []),
-    auction_status: raw.auction_status || raw.status || "LIVE",
-    auction_end_time: raw.auction_end_time || raw.end_time || null,
-    current_bid: raw.current_bid ?? null,
-    bid_count: raw.bid_count ?? 0,
-    comment_count: raw.comment_count ?? 0,
-    location: raw.location || [raw.city, raw.state].filter(Boolean).join(", ") || "",
-    dealership_name: raw.dealership_name || null,
-    description: raw.description || "",
-    specs: raw.specs || {},
-    posted_at: raw.posted_at || raw.created_at || new Date().toISOString(),
-    likes: raw.likes ?? raw.like_count ?? 0,
-    price_label: raw.auction_status === "AUCTION_IN_PROGRESS" ? "Current Bid" : "Buy Now",
-  };
-}
 
 export default function CarDetail() {
   const { id } = useParams();
-  const [selectedImage, setSelectedImage] = useState(0);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [freakStatsOpen, setFreakStatsOpen] = useState(false);
+  const [askSellerOpen, setAskSellerOpen] = useState(false);
+  const [negotiationOpen, setNegotiationOpen] = useState(false);
+  const scrollYRef = useRef(0);
 
-  const { data: apiCar, isLoading } = useQuery({
+  const { data: rawCar, isLoading } = useQuery({
     queryKey: ["car", id],
     queryFn: () => getCarById(id!),
     enabled: !!id,
     retry: 1,
   });
 
-  // Normalize API car or fallback to mock
-  const car = apiCar
-    ? normalizeCar(apiCar)
-    : mockCars.find((c) => c.id === id);
+  const car = rawCar ? normalizeCar(rawCar) : null;
+
+  const countdown = useCountdown(car?.endTime ?? null);
+
+  const { trackView } = useRecentlyViewed();
+  useEffect(() => { if (car) trackView(car); }, [car?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const likeId = car?.id && /^\d+$/.test(String(car.id)) ? String(car.id) : null;
+  const { count: likeCount, liked, saving: likeSaving, addLike } = useCarLike(likeId, car?.likes ?? 0, false);
+  const { shareState, handleShare } = useShare();
+  const { count: commentCount, fetchCount: refreshCommentCount, increment: incrementCommentCount } = useCommentCount(likeId);
+
+  const openComments = useCallback(() => {
+    scrollYRef.current = window.scrollY;
+    setCommentsOpen(true);
+  }, []);
+
+  const closeComments = useCallback(() => {
+    const saved = scrollYRef.current;
+    setCommentsOpen(false);
+    requestAnimationFrame(() => window.scrollTo({ top: saved, behavior: "auto" }));
+  }, []);
+
+  const shareUrl = car?.id ? `https://api.vinfreak.com/share/${encodeURIComponent(car.id)}` : "";
 
   if (isLoading) {
     return (
@@ -77,19 +87,17 @@ export default function CarDetail() {
     );
   }
 
-  const isAuction = car.auction_status === "AUCTION_IN_PROGRESS";
-  const isSold = car.auction_status === "SOLD";
-
-  const quickSpecs = [
-    { icon: Calendar, label: "Year", value: car.year.toString() },
-    { icon: Gauge, label: "Mileage", value: car.mileage ? `${car.mileage.toLocaleString()} mi` : "N/A" },
-    { icon: Settings, label: "Trans.", value: car.transmission },
-    { icon: Palette, label: "Color", value: car.exterior_color },
-  ];
+  const isAuction = car.auctionStatus === "AUCTION_IN_PROGRESS" && !countdown.ended;
+  const isSold = car.auctionStatus === "SOLD" || (car.auctionStatus === "AUCTION_IN_PROGRESS" && countdown.ended);
+  const priceLabel = isAuction ? "Current Bid" : isSold ? "Sold For" : "Price";
+  const displayPrice = isAuction ? (car.currentBid ?? car.price) : car.price;
+  const sourceLabel = getSourceLabel(car.source);
+  const dealerLabel = car.dealershipName || sourceLabel;
 
   return (
     <Layout>
       <div className="container py-6 space-y-6">
+        {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Link to="/" className="flex items-center gap-1 hover:text-foreground transition-colors">
             <ArrowLeft className="w-4 h-4" /> Back
@@ -99,117 +107,226 @@ export default function CarDetail() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-              className="relative aspect-[16/10] rounded-xl overflow-hidden bg-card border border-border">
-              <img src={car.images[selectedImage] || car.image_url} alt={car.title} className="w-full h-full object-cover" />
-              <div className="absolute top-3 left-3 flex items-center gap-2">
-                {car.auction_status === "LIVE" && <span className="badge-for-sale">FOR SALE</span>}
-                {isAuction && <span className="badge-auction"><Clock className="w-3 h-3" /> AUCTION</span>}
-                {isSold && <span className="badge-sold">SOLD</span>}
-              </div>
-              <span className="absolute bottom-3 left-3 badge-source">{sourceLabels[car.source] || car.source}</span>
-              {isAuction && car.auction_end_time && (
-                <span className="absolute top-3 right-3 text-xs font-semibold text-card bg-foreground/70 backdrop-blur-sm px-2 py-1 rounded-md">
-                  {formatCountdown(car.auction_end_time)}
-                </span>
-              )}
+          {/* Left: Images + content */}
+          <div className="lg:col-span-2 space-y-5">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              <Gallery images={car.images} title={car.title} />
             </motion.div>
 
-            {car.images.length > 1 && (
-              <div className="flex gap-2 overflow-x-auto scrollbar-hide">
-                {car.images.map((img: string, i: number) => (
-                  <button key={i} onClick={() => setSelectedImage(i)}
-                    className={`flex-shrink-0 w-20 h-14 rounded-lg overflow-hidden border-2 transition-colors ${i === selectedImage ? "border-primary" : "border-transparent opacity-60 hover:opacity-100"}`}>
-                    <img src={img} alt="" className="w-full h-full object-cover" />
-                  </button>
-                ))}
-              </div>
-            )}
+            {/* Specs */}
+            <section className="bg-card rounded-xl border border-border p-6 space-y-4">
+              <h2 className="font-semibold text-lg">Specifications</h2>
+              <SpecGrid car={car} />
+            </section>
 
-            <div className="bg-card rounded-xl border border-border p-6 space-y-3">
-              <h2 className="font-semibold text-lg">Description</h2>
-              <p className="text-sm text-muted-foreground leading-relaxed">{car.description || "No description available."}</p>
-            </div>
-
-            {Object.keys(car.specs).length > 0 && (
-              <div className="bg-card rounded-xl border border-border p-6 space-y-3">
-                <h2 className="font-semibold text-lg">Specifications</h2>
-                <div className="grid grid-cols-2 gap-2">
-                  {Object.entries(car.specs).map(([key, value]) => (
-                    <div key={key} className="flex justify-between p-3 rounded-lg bg-background">
-                      <span className="text-sm text-muted-foreground">{key}</span>
-                      <span className="text-sm font-semibold">{String(value)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* Description, highlights, etc */}
+            <DetailSections car={car} />
           </div>
 
+          {/* Right: Sidebar */}
           <div className="space-y-4">
             <div className="bg-card rounded-xl border border-border p-6 space-y-4 sticky top-20">
-              <h1 className="font-bold text-lg leading-snug">{car.title}</h1>
-              {car.engine && <p className="text-sm text-muted-foreground">{car.engine}</p>}
+              {/* Title + badges */}
+              <div className="flex items-start gap-3">
+                <div className="flex-1 min-w-0">
+                  <h1 className="font-bold text-lg leading-snug">{car.title}</h1>
+                  {car.engine && <p className="text-sm text-muted-foreground mt-1">{car.engine}</p>}
+                </div>
+                {car.dealership?.logo_url && (
+                  <img
+                    src={car.dealership.logo_url.startsWith("http") ? car.dealership.logo_url : `https://api.vinfreak.com${car.dealership.logo_url}`}
+                    alt={car.dealershipName || ""}
+                    className="w-12 h-12 object-contain flex-shrink-0 rounded"
+                  />
+                )}
+              </div>
+
+              {/* Status badges */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {car.auctionStatus === "LIVE" && <span className="badge-for-sale">FOR SALE</span>}
+                {isAuction && (
+                  <span className="badge-auction">
+                    <Clock className="w-3 h-3" /> AUCTION
+                  </span>
+                )}
+                {isSold && <span className="badge-sold">SOLD</span>}
+                {isAuction && countdown.text && (
+                  <span className="text-xs font-semibold px-2 py-1 rounded-md bg-warning/10 text-warning border border-warning/20">
+                    {countdown.text}
+                  </span>
+                )}
+              </div>
+
               <hr className="border-border" />
+
+              {/* Price */}
               <div>
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">
-                  {isAuction ? "Current Bid" : isSold ? "Sold For" : "Price"}
-                </p>
-                <p className="text-3xl font-bold">
-                  {isAuction && car.current_bid ? formatPrice(car.current_bid) : formatPrice(car.price)}
-                </p>
-                {isAuction && <p className="text-sm text-muted-foreground">{car.bid_count} bids</p>}
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {quickSpecs.map((s) => (
-                  <div key={s.label} className="flex flex-col items-center p-3 rounded-lg bg-background text-center">
-                    <s.icon className="w-4 h-4 text-muted-foreground mb-1" />
-                    <span className="text-[10px] text-muted-foreground">{s.label}</span>
-                    <span className="text-xs font-semibold">{s.value}</span>
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">{priceLabel}</p>
+                <p className="text-3xl font-bold text-primary">{formatPrice(displayPrice, car.currency)}</p>
+                {isAuction && car.bidCount > 0 && (
+                  <p className="text-sm text-muted-foreground">{car.bidCount} bids</p>
+                )}
+                {car.estimatedValue && (
+                  <div className="mt-2 flex items-center gap-1.5 text-sm">
+                    <span className="text-muted-foreground">Est. Value:</span>
+                    <span className="font-semibold">{car.estimatedValue}</span>
+                    <Sparkles className="w-3 h-3 text-primary" />
                   </div>
-                ))}
+                )}
               </div>
+
+              {/* Quick stats */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col items-center p-3 rounded-xl bg-background text-center">
+                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Mileage</span>
+                  <span className="text-sm font-bold mt-0.5">{formatMileage(car.mileage)}</span>
+                </div>
+                <div className="flex flex-col items-center p-3 rounded-xl bg-background text-center">
+                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Trans.</span>
+                  <span className="text-sm font-bold mt-0.5">{car.transmissionTag || car.transmission || "—"}</span>
+                </div>
+              </div>
+
               <hr className="border-border" />
+
+              {/* Location */}
               {car.location && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <MapPin className="w-4 h-4" /> {car.location}
+                  <MapPin className="w-4 h-4 flex-shrink-0" /> {car.location}
                 </div>
               )}
-              {car.dealership_name && (
+
+              {/* Dealer */}
+              {car.dealershipName && (
                 <div className="px-3 py-2 rounded-lg bg-background text-sm">
-                  <span className="text-muted-foreground">Dealer:</span> <span className="font-medium">{car.dealership_name}</span>
+                  <span className="text-muted-foreground">Listed by:</span>{" "}
+                  <span className="font-medium">{car.dealershipName}</span>
                 </div>
               )}
-              {!isSold && (
-                <a href={car.url} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 w-full py-3 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-colors">
-                  {isAuction ? "Place Bid" : "View Listing"} <ExternalLink className="w-4 h-4" />
+
+              {/* CTA */}
+              {!isSold && car.url && car.url !== "#" && (
+                <a
+                  href={car.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 w-full py-3 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-colors"
+                >
+                  View on {dealerLabel} <ExternalLink className="w-4 h-4" />
                 </a>
               )}
-              <div className="grid grid-cols-2 gap-2">
-                <button className="flex items-center justify-center gap-2 py-2.5 rounded-lg border border-border text-sm font-medium hover:bg-muted transition-colors">
-                  <Bookmark className="w-4 h-4" /> Save
+
+              {/* Action buttons */}
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  onClick={addLike}
+                  disabled={likeSaving || !likeId}
+                  className={`car-chip interactive justify-center py-2 ${liked ? "car-chip--liked" : ""}`}
+                >
+                  <ThumbsUp className="w-3.5 h-3.5" />
+                  <span className="text-xs font-medium">{likeCount}</span>
                 </button>
-                <button className="flex items-center justify-center gap-2 py-2.5 rounded-lg border border-border text-sm font-medium hover:bg-muted transition-colors">
-                  <Share2 className="w-4 h-4" /> Share
+                <button
+                  onClick={openComments}
+                  className="car-chip interactive justify-center py-2"
+                >
+                  <MessageCircle className="w-3.5 h-3.5" />
+                  <span className="text-xs font-medium">{commentCount ?? 0}</span>
+                </button>
+                <button
+                  onClick={() => handleShare(shareUrl, car.title)}
+                  className={`car-chip interactive justify-center py-2 ${shareState !== "idle" ? "car-chip--shared" : ""}`}
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span className="text-xs font-medium">
+                    {shareState === "copied" ? "Copied" : shareState === "shared" ? "Done" : "Share"}
+                  </span>
                 </button>
               </div>
-              <button className="freakstats-btn">
+
+              {/* FREAKStats */}
+              <button
+                className="freakstats-btn"
+                onClick={() => setFreakStatsOpen(true)}
+              >
                 <Sparkles className="w-4 h-4" />
                 <span className="font-semibold text-xs">AI</span>
                 Get insights with FREAKStats
               </button>
-              <div className="flex items-center justify-between text-xs text-muted-foreground pt-1">
-                <span className="flex items-center gap-1"><ThumbsUp className="w-3 h-3" /> {car.likes}</span>
-                <span className="flex items-center gap-1"><MessageCircle className="w-3 h-3" /> {car.comment_count}</span>
-                <span>{timeAgo(car.posted_at)}</span>
+
+              {/* Ask the Seller */}
+              <button
+                className="flex items-center gap-2 w-full py-2.5 px-4 rounded-lg bg-accent/50 border border-border text-foreground text-sm font-medium hover:bg-accent transition-colors"
+                onClick={() => setAskSellerOpen(true)}
+              >
+                <Mail className="w-4 h-4 text-primary" />
+                Ask the Seller
+              </button>
+
+              {/* FREAKCoach */}
+              {!isSold && (
+                <button
+                  className="group/coach relative flex items-center gap-3 w-full py-3 px-4 rounded-xl bg-gradient-to-r from-primary/15 via-primary/10 to-primary/5 border border-primary/25 text-foreground text-sm font-semibold hover:from-primary/25 hover:via-primary/15 hover:to-primary/10 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10 transition-all duration-300 overflow-hidden"
+                  onClick={() => setNegotiationOpen(true)}
+                >
+                  <img
+                    src={coachAvatar}
+                    alt=""
+                    className="w-9 h-9 rounded-full border-2 border-primary/30 object-cover group-hover/coach:scale-110 transition-transform duration-300"
+                  />
+                  <div className="flex flex-col items-start">
+                    <span className="text-sm font-bold tracking-tight">
+                      <span className="text-primary">FREAK</span>Coach
+                    </span>
+                    <span className="text-[10px] text-muted-foreground font-normal">Get your deal strategy</span>
+                  </div>
+                  <DollarSign className="w-4 h-4 text-primary ml-auto opacity-60 group-hover/coach:opacity-100 transition-opacity" />
+                </button>
+              )}
+
+              {/* Would You Buy? */}
+              <WouldYouBuyPoll carId={likeId} />
+
+              {/* FREAK Score */}
+              <div className="flex justify-center">
+                <FreakScoreBadge car={car} size="md" />
               </div>
-              {car.vin && <p className="text-[10px] text-muted-foreground text-center">VIN: {car.vin}</p>}
+
+              {/* VIN */}
+              {car.vin && (
+                <p className="text-[10px] text-muted-foreground text-center">VIN: {car.vin}</p>
+              )}
             </div>
           </div>
         </div>
+
+        {/* Similar Cars */}
+        {car && <SimilarCars car={car} />}
       </div>
+
+      {/* Modals */}
+      {commentsOpen && likeId && (
+        <CommentsModal
+          carId={likeId}
+          carTitle={car.title}
+          carImage={car.imageUrl}
+          onClose={closeComments}
+          onCommentApproved={incrementCommentCount}
+          refreshCount={refreshCommentCount}
+        />
+      )}
+
+      {freakStatsOpen && car && (
+        <FreakStatsModal car={car} onClose={() => setFreakStatsOpen(false)} />
+      )}
+
+      {askSellerOpen && car && (
+        <AskSellerModal car={car} onClose={() => setAskSellerOpen(false)} />
+      )}
+
+      {negotiationOpen && car && (
+        <NegotiationCoachModal car={car} onClose={() => setNegotiationOpen(false)} />
+      )}
     </Layout>
   );
 }

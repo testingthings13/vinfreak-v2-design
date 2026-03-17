@@ -44,13 +44,25 @@ function normalizeState(value: any): string | null {
   return STATE_ABBRS[slug] ?? trimmed;
 }
 
+function abbreviateStateInLocation(loc: string): string {
+  // Replace full state names with abbreviations (e.g. "Houston, Texas" → "Houston, TX")
+  for (const [full, abbr] of Object.entries(STATE_ABBRS)) {
+    const re = new RegExp(`\\b${full}\\b`, "i");
+    if (re.test(loc)) {
+      return loc.replace(re, abbr).trim();
+    }
+  }
+  return loc;
+}
+
 function normalizeLocation(raw: any): string {
   const candidates = [
     raw.location, raw.location_text, raw.location_string,
   ];
   for (const c of candidates) {
     if (typeof c === "string" && c.trim()) {
-      return stripZip(c) || c.trim();
+      const cleaned = stripZip(c) || c.trim();
+      return abbreviateStateInLocation(cleaned);
     }
   }
   const city = isBad(raw.city) ? null : String(raw.city).trim();
@@ -134,8 +146,34 @@ export interface NormalizedCar {
   [key: string]: any;
 }
 
+function getStableCarId(raw: any): string {
+  // Accept numeric IDs (common from API)
+  const numericId = raw?.id ?? raw?._id;
+  if (typeof numericId === "number" && Number.isFinite(numericId)) return String(numericId);
+
+  const directId = [raw?.id, raw?._id, raw?.vin, raw?.url, raw?.source_url, raw?.listing_url, raw?.external_id, raw?.slug, raw?.lot_number]
+    .find((value) => typeof value === "string" && value.trim());
+
+  if (directId) return String(directId).trim();
+
+  const compositeId = [
+    raw?.year ?? raw?.model_year,
+    typeof raw?.make === "string" ? raw.make : raw?.make?.name,
+    raw?.model ?? raw?.series,
+    raw?.trim,
+    raw?.title,
+    raw?.price ?? raw?.current_bid ?? raw?.buy_now_price,
+    raw?.location ?? raw?.city,
+  ]
+    .filter((value) => !isBad(value))
+    .map((value) => String(value).trim())
+    .join("|");
+
+  return compositeId || "unknown-car";
+}
+
 export function normalizeCar(raw: any): NormalizedCar {
-  const id = String(raw.id ?? raw._id ?? raw.vin ?? Math.random().toString(36).slice(2));
+  const id = getStableCarId(raw);
   const year = raw.year ?? raw.model_year ?? null;
   const makeName = (typeof raw.make === "string" ? raw.make : raw.make?.name) ?? raw.brand ?? "";
   const model = raw.model ?? raw.series ?? "";

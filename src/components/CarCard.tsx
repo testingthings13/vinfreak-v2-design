@@ -1,7 +1,12 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { usePriceHighlight } from "@/hooks/usePriceHighlight";
 import { Link } from "react-router-dom";
-import { MessageCircle, MapPin, Clock, Sparkles, ExternalLink, Share2, ThumbsUp } from "lucide-react";
+import LikeReaction from "@/components/LikeReaction";
+import { MessageCircle, MapPin, Clock, Sparkles, ExternalLink, Share2, Heart, GitCompareArrows } from "lucide-react";
 import { motion } from "framer-motion";
+import { useFavorites } from "@/hooks/useFavorites";
+import { useCompare } from "@/hooks/useCompare";
+import { useCountdown } from "@/hooks/useCountdown";
 import {
   NormalizedCar,
   formatPrice,
@@ -14,6 +19,7 @@ import { useCarLike } from "@/hooks/useCarLike";
 import { useShare } from "@/hooks/useShare";
 import { useCommentCount } from "@/hooks/useCommentCount";
 import CommentsModal from "@/components/CommentsModal";
+import FreakScoreBadge from "@/components/FreakScoreBadge";
 
 interface CarCardProps {
   car: NormalizedCar;
@@ -21,8 +27,10 @@ interface CarCardProps {
 }
 
 export default function CarCard({ car, index = 0 }: CarCardProps) {
-  const isAuction = car.auctionStatus === "AUCTION_IN_PROGRESS";
-  const isSold = car.auctionStatus === "SOLD";
+  const countdown = useCountdown(car.endTime);
+  const isAuction = car.auctionStatus === "AUCTION_IN_PROGRESS" && !countdown.ended;
+  const isUrgent = isAuction && countdown.diff > 0 && countdown.diff < 7200000; // < 2 hours
+  const isSold = car.auctionStatus === "SOLD" || (car.auctionStatus === "AUCTION_IN_PROGRESS" && countdown.ended);
   const isLive = car.auctionStatus === "LIVE";
 
   const isFacebook = car.source?.includes("facebook");
@@ -30,6 +38,7 @@ export default function CarCard({ car, index = 0 }: CarCardProps) {
 
   const priceLabel = isAuction ? "Current Bid" : "Price";
   const displayPrice = isAuction ? (car.currentBid ?? car.price) : car.price;
+  const priceFlash = usePriceHighlight(displayPrice);
 
   const sourceLabel = getSourceLabel(car.source);
   const dealershipLabel = car.dealershipName || sourceLabel;
@@ -45,7 +54,7 @@ export default function CarCard({ car, index = 0 }: CarCardProps) {
   const detailPath = `/cars/${encodeURIComponent(car.id)}`;
 
   // ── Likes (V1-matching behavior) ──
-  const likeId = car.id && /^\d+$/.test(String(car.id)) ? String(car.id) : null;
+  const likeId = car.id ? String(car.id) : null;
   const { count: likeCount, liked, saving: likeSaving, addLike } = useCarLike(
     likeId,
     car.likes,
@@ -55,12 +64,27 @@ export default function CarCard({ car, index = 0 }: CarCardProps) {
   // ── Share (V1-matching: native share → clipboard fallback) ──
   const { shareState, handleShare } = useShare();
   const shareUrl = car.id
-    ? `${window.location.origin}/share/${encodeURIComponent(car.id)}`
+    ? `https://api.vinfreak.com/share/${encodeURIComponent(car.id)}`
     : "";
 
   // ── Comment count (fetched live from API like V1) ──
   const { count: commentCount, loading: commentsLoading, fetchCount: refreshCommentCount, increment: incrementCommentCount } = useCommentCount(likeId);
   const commentDisplay = commentsLoading ? "…" : (commentCount ?? car.commentCount ?? 0);
+
+  // ── Favorites ──
+  const { isFavorite, toggleFavorite } = useFavorites();
+  const favored = isFavorite(car.id);
+
+  // ── Compare ──
+  const { isComparing, toggleCompare, maxReached, cacheCarData } = useCompare();
+  const comparing = isComparing(car.id);
+
+  // Cache car data for compare page
+  useEffect(() => { cacheCarData(car); }, [car, cacheCarData]);
+
+  // ── Like reaction animation ──
+  const [likeBurst, setLikeBurst] = useState(0);
+  const likeRef = useRef<HTMLButtonElement>(null);
 
   // ── Comments modal ──
   const [commentsOpen, setCommentsOpen] = useState(false);
@@ -84,11 +108,11 @@ export default function CarCard({ car, index = 0 }: CarCardProps) {
     <motion.article
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, delay: index * 0.04 }}
+      transition={{ duration: 0.3, delay: Math.min(index * 0.04, 0.3) }}
       className="car-card-article"
     >
       <Link to={detailPath} className="block group">
-        <div className="bg-card rounded-xl border border-border overflow-hidden hover:shadow-lg hover:shadow-foreground/5 transition-all duration-300">
+        <div className={`bg-card rounded-xl border border-border overflow-hidden hover:shadow-lg hover:shadow-foreground/5 transition-all duration-300 ${isUrgent ? "car-card-urgent" : ""}`}>
           {/* Image */}
           <div className="relative aspect-[16/10] overflow-hidden">
             {car.imageUrl ? (
@@ -110,8 +134,8 @@ export default function CarCard({ car, index = 0 }: CarCardProps) {
                 <span className="badge-for-sale">FOR SALE</span>
               )}
               {isAuction && (
-                <span className="badge-auction">
-                  <Clock className="w-3 h-3" /> AUCTION
+                <span className={`badge-auction ${isUrgent ? "badge-auction--urgent" : ""}`}>
+                  <Clock className="w-3 h-3" /> {isUrgent ? "ENDING SOON" : "AUCTION"}
                 </span>
               )}
               {isSold && <span className="badge-sold">SOLD</span>}
@@ -123,16 +147,49 @@ export default function CarCard({ car, index = 0 }: CarCardProps) {
               )}
             </div>
 
-            {/* Countdown */}
-            {isAuction && car.endTime && (
-              <div className="absolute top-3 right-3 text-[11px] font-semibold text-card bg-foreground/70 backdrop-blur-sm px-2 py-1 rounded-md">
-                {formatCountdown(car.endTime)}
-              </div>
-            )}
+            {/* Favorite + Compare buttons top-right */}
+            <div className="absolute top-3 right-3 flex items-center gap-1.5">
+              {isAuction && countdown.text && (
+                <span className={`text-[11px] font-semibold px-2 py-1 rounded-md backdrop-blur-sm ${
+                  isUrgent
+                    ? "bg-red-600 text-white animate-pulse"
+                    : "text-card bg-foreground/70"
+                }`}>
+                  {isUrgent ? `⏰ ${countdown.text}` : countdown.text}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  toggleCompare(car.id, car);
+                }}
+                disabled={!comparing && maxReached}
+                className={`car-card-icon-btn ${comparing ? "car-card-icon-btn--compare-active" : ""}`}
+                aria-label={comparing ? "Remove from compare" : "Add to compare"}
+                title={!comparing && maxReached ? "Max 3 cars" : comparing ? "Remove from compare" : "Compare"}
+              >
+                <GitCompareArrows className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  toggleFavorite(car.id);
+                }}
+                className={`car-card-icon-btn ${favored ? "car-card-icon-btn--fav-active" : ""}`}
+                aria-label={favored ? "Remove from favorites" : "Add to favorites"}
+              >
+                <Heart className="w-4 h-4" fill={favored ? "currentColor" : "none"} />
+              </button>
+            </div>
 
             {/* Source badge bottom-left */}
-            <div className="absolute bottom-3 left-3">
+            <div className="absolute bottom-3 left-3 flex items-center gap-1.5">
               <span className="badge-source">{sourceLabel}</span>
+              <FreakScoreBadge car={car} size="sm" />
             </div>
           </div>
 
@@ -156,16 +213,19 @@ export default function CarCard({ car, index = 0 }: CarCardProps) {
             <div className="flex items-center gap-2 flex-wrap text-xs">
               {/* Like button */}
               <button
+                ref={likeRef}
                 type="button"
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
+                  if (!liked) setLikeBurst((n) => n + 1);
                   addLike();
                 }}
                 disabled={likeSaving || !likeId}
-                className={`car-chip interactive ${liked ? "car-chip--liked" : ""}`}
+                className={`car-chip interactive relative ${liked ? "car-chip--liked" : ""}`}
                 aria-label={`Like ${car.title} (${likeCount} likes)`}
               >
+                <LikeReaction trigger={likeBurst} originRef={likeRef as React.RefObject<HTMLElement>} />
                 <span className="text-sm">👍</span>
                 <span>{likeCount}</span>
               </button>
@@ -208,7 +268,7 @@ export default function CarCard({ car, index = 0 }: CarCardProps) {
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
               <div>
                 <span className="text-muted-foreground text-xs">{priceLabel}</span>
-                <p className="font-bold text-base">{formatPrice(displayPrice, car.currency)}</p>
+                <p className={`font-bold text-base transition-colors ${priceFlash ? "price-highlight text-primary" : ""}`}>{formatPrice(displayPrice, car.currency)}</p>
               </div>
               <div>
                 <span className="text-muted-foreground text-xs">Mileage</span>
