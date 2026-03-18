@@ -109,23 +109,31 @@ export default function FreakStatsModal({ car, onClose }: FreakStatsModalProps) 
     setLoading(true);
     setError(null);
     try {
+      const sourceUrl = String(car.url || "").trim();
+      if (!/^https?:\/\//i.test(sourceUrl)) {
+        throw new Error("This listing does not have a source URL for AI analysis.");
+      }
+
       const payload = {
-        car_id: car.id,
-        url: car.url || "",
-        title: car.title,
-        make: car.make,
-        model: car.model,
-        year: car.year,
-        price: car.price,
-        mileage: car.mileage,
-        transmission: car.transmission,
-        exterior_color: car.exteriorColor,
-        engine: car.engine,
-        vin: car.vin,
-        source: car.source,
-        location: car.location,
-        auction_status: car.auctionStatus,
-        description: car.description?.slice(0, 1000),
+        url: sourceUrl,
+        car: {
+          id: car.id,
+          title: car.title,
+          make: car.make,
+          model: car.model,
+          year: car.year,
+          price: car.price,
+          mileage: car.mileage,
+          transmission: car.transmission,
+          exterior_color: car.exteriorColor,
+          engine: car.engine,
+          vin: car.vin,
+          source: car.source,
+          location: car.location,
+          auction_status: car.auctionStatus,
+          description: car.description?.slice(0, 1000),
+          url: sourceUrl,
+        },
       };
       const res = await postJSON("/freakstats/insights", payload, 120000);
 

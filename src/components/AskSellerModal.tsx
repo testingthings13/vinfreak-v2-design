@@ -26,8 +26,13 @@ export default function AskSellerModal({ car, onClose }: AskSellerModalProps) {
     setLoading(true);
     setError(null);
     try {
+      const sourceUrl = String(car.url || "").trim();
+      if (!/^https?:\/\//i.test(sourceUrl)) {
+        throw new Error("This listing does not have a source URL to generate an email.");
+      }
+
       const payload = {
-        url: car.url || "",
+        url: sourceUrl,
         car: {
           title: car.title,
           year: car.year,
@@ -41,7 +46,7 @@ export default function AskSellerModal({ car, onClose }: AskSellerModalProps) {
           source: car.source,
           location: car.location,
           auction_status: car.auctionStatus,
-          url: car.url,
+          url: sourceUrl,
           dealership: car.dealershipName,
         },
       };

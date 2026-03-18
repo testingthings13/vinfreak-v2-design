@@ -1,5 +1,16 @@
 # Welcome to your Lovable project
 
+## 2026-03-18 Integration Update
+
+- Mirror status: this repo received the same V2/site API integration fixes now used in `testingthings13/vinfreakdev` (`V2/site`).
+- Key fixes synced:
+  - API base URL/env handling (`VITE_API_BASE`) + centralized URL builders
+  - Public API requests now include credentials for session-backed endpoints
+  - Comments payload compatibility (`body` contract)
+  - FREAKStats and Ask Seller payload alignment with backend contracts
+  - Share/dealership URL normalization (removed hardcoded host references)
+- Backend work tracking note: see [`BACKEND_UPDATE_NOTE_2026-03-18.md`](./BACKEND_UPDATE_NOTE_2026-03-18.md).
+
 ## Project info
 
 **URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID

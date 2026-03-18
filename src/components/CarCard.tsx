@@ -20,6 +20,7 @@ import { useShare } from "@/hooks/useShare";
 import { useCommentCount } from "@/hooks/useCommentCount";
 import CommentsModal from "@/components/CommentsModal";
 import FreakScoreBadge from "@/components/FreakScoreBadge";
+import { buildPublicUrl, buildShareUrl } from "@/lib/api";
 
 interface CarCardProps {
   car: NormalizedCar;
@@ -64,7 +65,7 @@ export default function CarCard({ car, index = 0 }: CarCardProps) {
   // ── Share (V1-matching: native share → clipboard fallback) ──
   const { shareState, handleShare } = useShare();
   const shareUrl = car.id
-    ? `https://api.vinfreak.com/share/${encodeURIComponent(car.id)}`
+    ? buildShareUrl(car.id)
     : "";
 
   // ── Comment count (fetched live from API like V1) ──
@@ -202,7 +203,7 @@ export default function CarCard({ car, index = 0 }: CarCardProps) {
               </h3>
               {car.dealership?.logo_url && (
                 <img
-                  src={car.dealership.logo_url.startsWith("http") ? car.dealership.logo_url : `https://api.vinfreak.com${car.dealership.logo_url}`}
+                  src={buildPublicUrl(car.dealership.logo_url)}
                   alt={car.dealershipName || ""}
                   className="w-10 h-10 object-contain flex-shrink-0 rounded"
                 />

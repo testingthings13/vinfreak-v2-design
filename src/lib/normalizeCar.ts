@@ -3,6 +3,8 @@
  * Ported from the V1 normalizeCar utility with simplified TypeScript types.
  */
 
+import { buildPublicUrl } from "./api";
+
 const isBad = (v: any): boolean =>
   v === null || v === undefined || v === "" || v === "null" || v === "None";
 
@@ -88,11 +90,10 @@ function detectTransmissionTag(value: any): string | null {
   return null;
 }
 
-const API_BASE = "https://api.vinfreak.com";
 const toAbsolute = (u: string): string => {
   if (!u) return u;
   if (u.startsWith("http") || u.startsWith("data:")) return u;
-  return `${API_BASE}${u.startsWith("/") ? u : "/" + u}`;
+  return buildPublicUrl(u);
 };
 
 export interface NormalizedCar {

@@ -2,7 +2,7 @@ import { useParams, Link } from "react-router-dom";
 import coachAvatar from "@/assets/freakcoach-avatar.png";
 import { useQuery } from "@tanstack/react-query";
 import { useState, useCallback, useRef, useEffect } from "react";
-import { getCarById } from "@/lib/api";
+import { buildPublicUrl, buildShareUrl, getCarById } from "@/lib/api";
 import { normalizeCar, formatPrice, formatMileage, getSourceLabel } from "@/lib/normalizeCar";
 import Layout from "@/components/Layout";
 import Gallery from "@/components/Gallery";
@@ -64,7 +64,7 @@ export default function CarDetail() {
     requestAnimationFrame(() => window.scrollTo({ top: saved, behavior: "auto" }));
   }, []);
 
-  const shareUrl = car?.id ? `https://api.vinfreak.com/share/${encodeURIComponent(car.id)}` : "";
+  const shareUrl = car?.id ? buildShareUrl(car.id) : "";
 
   if (isLoading) {
     return (
@@ -134,7 +134,7 @@ export default function CarDetail() {
                 </div>
                 {car.dealership?.logo_url && (
                   <img
-                    src={car.dealership.logo_url.startsWith("http") ? car.dealership.logo_url : `https://api.vinfreak.com${car.dealership.logo_url}`}
+                    src={buildPublicUrl(car.dealership.logo_url)}
                     alt={car.dealershipName || ""}
                     className="w-12 h-12 object-contain flex-shrink-0 rounded"
                   />

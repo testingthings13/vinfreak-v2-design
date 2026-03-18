@@ -1,5 +1,33 @@
-export const API_BASE = "https://api.vinfreak.com";
+const DEFAULT_API_BASE = "https://api.vinfreak.com";
 const API_PREFIX = "/api";
+
+function normalizeBase(value: string | undefined | null): string {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+export const API_BASE = normalizeBase(import.meta.env.VITE_API_BASE || "") || DEFAULT_API_BASE;
+
+function normalizePath(path: string): string {
+  return path.startsWith("/") ? path : `/${path}`;
+}
+
+function withApiPrefix(path: string): string {
+  const normalized = normalizePath(path);
+  return normalized.startsWith(API_PREFIX) ? normalized : `${API_PREFIX}${normalized}`;
+}
+
+export function buildApiUrl(path: string): string {
+  return `${API_BASE}${withApiPrefix(path)}`;
+}
+
+export function buildPublicUrl(pathOrUrl: string): string {
+  if (/^(https?:)?\/\//i.test(pathOrUrl) || /^data:/i.test(pathOrUrl)) return pathOrUrl;
+  return `${API_BASE}${normalizePath(pathOrUrl)}`;
+}
+
+export function buildShareUrl(carId: string): string {
+  return buildPublicUrl(`/share/${encodeURIComponent(carId)}`);
+}
 
 function buildHeaders(extra: Record<string, string> = {}): Record<string, string> {
   const headers: Record<string, string> = { Accept: "application/json", ...extra };
@@ -7,13 +35,15 @@ function buildHeaders(extra: Record<string, string> = {}): Record<string, string
 }
 
 export async function getJSON<T = any>(path: string, timeoutMs = 12000): Promise<T> {
-  const normalized = path.startsWith("/") ? path : `/${path}`;
-  const fullPath = normalized.startsWith(API_PREFIX) ? normalized : `${API_PREFIX}${normalized}`;
-  const url = `${API_BASE}${fullPath}`;
+  const url = buildApiUrl(path);
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch(url, { headers: buildHeaders(), signal: ctrl.signal });
+    const res = await fetch(url, {
+      headers: buildHeaders(),
+      signal: ctrl.signal,
+      credentials: "include",
+    });
     const text = await res.text();
     if (!res.ok) throw new Error(`${res.status} ${res.statusText} • ${text.slice(0, 200)}`);
     return JSON.parse(text);
@@ -26,9 +56,7 @@ export async function getJSON<T = any>(path: string, timeoutMs = 12000): Promise
 }
 
 export async function postJSON<T = any>(path: string, body: any = {}, timeoutMs = 15000): Promise<T> {
-  const normalized = path.startsWith("/") ? path : `/${path}`;
-  const fullPath = normalized.startsWith(API_PREFIX) ? normalized : `${API_PREFIX}${normalized}`;
-  const url = `${API_BASE}${fullPath}`;
+  const url = buildApiUrl(path);
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -37,6 +65,7 @@ export async function postJSON<T = any>(path: string, body: any = {}, timeoutMs 
       headers: buildHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(body),
       signal: ctrl.signal,
+      credentials: "include",
     });
     const text = await res.text();
     if (!res.ok) throw new Error(`POST ${url} ${res.status} • ${text.slice(0, 200)}`);
@@ -120,8 +149,12 @@ export async function getCars(filters: GetCarsFilters = {}, paging: GetCarsPagin
   if (filters.lat != null) p.set("lat", String(filters.lat));
   if (filters.lng != null) p.set("lng", String(filters.lng));
 
-  const url = `${API_BASE}${API_PREFIX}/cars?${p.toString()}`;
-  const res = await fetch(url, { headers: buildHeaders(), signal });
+  const url = buildApiUrl(`/cars?${p.toString()}`);
+  const res = await fetch(url, {
+    headers: buildHeaders(),
+    signal,
+    credentials: "include",
+  });
   if (!res.ok) throw new Error(`GET /cars ${res.status}`);
   const data = await res.json();
 
@@ -151,8 +184,23 @@ export function getCommentCount(carId: string) {
   return getJSON(`/cars/${encodeURIComponent(carId)}/comments/count`);
 }
 
-export function submitComment(carId: string, payload: { text: string; author?: string; parent_id?: string }) {
-  return postJSON(`/cars/${encodeURIComponent(carId)}/comments`, payload);
+export interface SubmitCommentPayload {
+  text?: string;
+  body?: string;
+  author?: string;
+  name?: string;
+  email?: string;
+  parent_id?: string | number;
+}
+
+export function submitComment(carId: string, payload: SubmitCommentPayload) {
+  const body = String(payload.body ?? payload.text ?? "").trim();
+  return postJSON(`/cars/${encodeURIComponent(carId)}/comments`, {
+    body,
+    name: payload.name ?? payload.author,
+    email: payload.email,
+    parent_id: payload.parent_id,
+  });
 }
 
 export function setCarLike(carId: string, liked: boolean) {
@@ -173,5 +221,5 @@ export function lookupIp(ip?: string) {
 }
 
 export function getAdminSessionStatus() {
-  return getJSON("/admin/session-status").catch(() => null);
+  return getJSON("/admin/session/status").catch(() => null);
 }
